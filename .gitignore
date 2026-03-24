@@ -35,6 +35,10 @@ lerna-debug.log*
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# Uploaded knowledge files (keep folder + .gitkeep)
+storage/knowledge-base/*
+!storage/knowledge-base/.gitkeep
+
 # dotenv environment variable files
 .env
 .env.development.local
