@@ -59,4 +59,35 @@ export class QdrantService implements OnModuleInit {
       },
     });
   }
+
+  async searchKnowledge(
+    vector: number[],
+    limit: number,
+  ): Promise<
+    Array<{
+      score: number;
+      knowledgeBaseId: number;
+      chunkIndex: number;
+      text: string;
+    }>
+  > {
+    const res = await this.client.search(this.collection, {
+      vector,
+      limit,
+      with_payload: true,
+    });
+
+    return res.map((hit) => {
+      const p = hit.payload as Record<string, unknown> | null | undefined;
+      const knowledgeBaseId = Number(p?.knowledgeBaseId ?? 0);
+      const chunkIndex = Number(p?.chunkIndex ?? 0);
+      const text = typeof p?.text === 'string' ? p.text : '';
+      return {
+        score: hit.score ?? 0,
+        knowledgeBaseId,
+        chunkIndex,
+        text,
+      };
+    });
+  }
 }

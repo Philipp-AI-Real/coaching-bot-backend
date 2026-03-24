@@ -54,6 +54,32 @@ export class GeminiEmbeddingService {
   }
 
   /**
+   * Embedding for user search queries (RAG retrieval). Uses RETRIEVAL_QUERY for better match vs document chunks.
+   */
+  async embedQuery(text: string): Promise<number[]> {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw new Error('Cannot embed empty query');
+    }
+
+    const ai = this.getClient();
+    const response = await ai.models.embedContent({
+      model: EMBED_MODEL,
+      contents: trimmed,
+      config: {
+        taskType: 'RETRIEVAL_QUERY',
+        outputDimensionality: EMBED_DIM,
+      },
+    });
+
+    const values = response.embeddings?.[0]?.values;
+    if (!values?.length) {
+      throw new Error('Gemini embedding response missing values');
+    }
+    return values;
+  }
+
+  /**
    * Embeds many chunks: batches multiple strings per SDK call, then advances in batches of `batchSize` requests.
    */
   async embedTexts(texts: string[], batchSize = 5): Promise<number[][]> {

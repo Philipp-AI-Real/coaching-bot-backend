@@ -39,7 +39,7 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Coaching Bot Pilot')
     .setDescription(
-      'Pilot API: knowledge base upload, list, get, delete (Postgres + Qdrant + Gemini embeddings). To replace content, delete then upload. Chat history table exists in Prisma for future use.',
+      'Pilot API: knowledge base CRUD; chat ask (RAG + Gemini) and paginated chat history. To replace KB content, delete then upload.',
     )
     .setVersion('0.1')
     .build();

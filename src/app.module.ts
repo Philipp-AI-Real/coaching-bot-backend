@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { QdrantModule } from './qdrant/qdrant.module';
 import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
     PrismaModule,
     QdrantModule,
     KnowledgeBaseModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [],
