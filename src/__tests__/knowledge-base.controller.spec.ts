@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { KnowledgeBaseController } from '../knowledge-base/knowledge-base.controller';
@@ -31,10 +32,10 @@ const makeDto = (id = 1, chunkCount = 1) => ({
 
 // ─── mock service ─────────────────────────────────────────────────────────────
 const mockKbService = {
-  createFromUpload: jest.fn(),
-  findAll: jest.fn(),
-  findOne: jest.fn(),
-  remove: jest.fn(),
+  createFromUpload: vi.fn(),
+  findAll: vi.fn(),
+  findOne: vi.fn(),
+  remove: vi.fn(),
 };
 
 // ─── suite ────────────────────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ describe('KnowledgeBaseController', () => {
   let controller: KnowledgeBaseController;
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [KnowledgeBaseController],
@@ -65,7 +66,7 @@ describe('KnowledgeBaseController', () => {
       expect(mockKbService.createFromUpload).toHaveBeenCalledWith(file, 'Test Doc');
     });
 
-    it('should propagate BadRequestException when service rejects (no file)', async () => {
+    it('should propagate BadRequestException when no file is provided', async () => {
       mockKbService.createFromUpload.mockRejectedValue(
         new BadRequestException('File is required'),
       );
@@ -79,10 +80,8 @@ describe('KnowledgeBaseController', () => {
       mockKbService.createFromUpload.mockRejectedValue(
         new BadRequestException('Unsupported file extension'),
       );
-      const badFile = makeFile();
-      (badFile as any).originalname = 'report.docx';
 
-      await expect(controller.create(badFile, undefined)).rejects.toThrow(
+      await expect(controller.create(makeFile(), undefined)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -103,9 +102,7 @@ describe('KnowledgeBaseController', () => {
     it('should return an empty array when no documents exist', async () => {
       mockKbService.findAll.mockResolvedValue([]);
 
-      const result = await controller.findAll();
-
-      expect(result).toEqual([]);
+      expect(await controller.findAll()).toEqual([]);
     });
   });
 

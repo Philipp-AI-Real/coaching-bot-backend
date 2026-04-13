@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
@@ -10,40 +11,39 @@ import { QdrantService } from '../qdrant/qdrant.service';
 import { GeminiEmbeddingService } from '../embedding/gemini-embedding.service';
 import { GeminiChatService } from '../chat/gemini-chat.service';
 
-// ─── mocks ────────────────────────────────────────────────────────────────────
-const mockChatMessage = (role: 'user' | 'assistant', content: string, id = 1) => ({
+// ─── helpers ──────────────────────────────────────────────────────────────────
+const mockMsg = (role: 'user' | 'assistant', content: string, id = 1) => ({
   id,
   role,
   content,
   createdAt: new Date('2026-04-13T10:00:00.000Z'),
 });
 
+// ─── mocks ────────────────────────────────────────────────────────────────────
 const mockPrisma = {
   chatMessage: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    count: jest.fn(),
+    create: vi.fn(),
+    findMany: vi.fn(),
+    count: vi.fn(),
   },
-  $transaction: jest.fn(),
+  $transaction: vi.fn(),
 };
 
 const mockQdrant = {
-  searchKnowledge: jest.fn(),
+  searchKnowledge: vi.fn(),
 };
 
 const mockEmbedding = {
-  embedQuery: jest.fn(),
+  embedQuery: vi.fn(),
 };
 
 const mockGeminiChat = {
-  generateCoachReply: jest.fn(),
+  generateCoachReply: vi.fn(),
 };
 
 const mockConfig = {
-  get: jest.fn().mockImplementation((key: string, defaultVal?: unknown) => {
-    const values: Record<string, string> = {
-      RAG_TOP_K: '8',
-    };
+  get: vi.fn().mockImplementation((key: string, defaultVal?: unknown) => {
+    const values: Record<string, string> = { RAG_TOP_K: '8' };
     return values[key] ?? defaultVal;
   }),
 };
@@ -53,7 +53,7 @@ describe('ChatService', () => {
   let service: ChatService;
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Happy-path defaults
     mockEmbedding.embedQuery.mockResolvedValue([0.1, 0.2, 0.3]);
@@ -61,7 +61,7 @@ describe('ChatService', () => {
       { score: 0.9, knowledgeBaseId: 1, chunkIndex: 0, text: 'Context about coaching.' },
     ]);
     mockGeminiChat.generateCoachReply.mockResolvedValue('Great coaching advice!');
-    mockPrisma.chatMessage.create.mockResolvedValue(mockChatMessage('user', 'hello'));
+    mockPrisma.chatMessage.create.mockResolvedValue(mockMsg('user', 'hello'));
     mockPrisma.$transaction.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -127,10 +127,7 @@ describe('ChatService', () => {
   // ─── getHistory ─────────────────────────────────────────────────────────────
   describe('getHistory', () => {
     it('should return paginated history with correct shape', async () => {
-      const items = [
-        mockChatMessage('assistant', 'Hello!', 2),
-        mockChatMessage('user', 'Hi', 1),
-      ];
+      const items = [mockMsg('assistant', 'Hello!', 2), mockMsg('user', 'Hi', 1)];
       mockPrisma.chatMessage.findMany.mockResolvedValue(items);
       mockPrisma.chatMessage.count.mockResolvedValue(2);
 

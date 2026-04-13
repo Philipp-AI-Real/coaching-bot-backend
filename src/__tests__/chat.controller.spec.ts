@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { ChatController } from '../chat/chat.controller';
@@ -7,8 +8,8 @@ import { ChatHistoryQueryDto } from '../chat/dto/chat-history-query.dto';
 
 // ─── mock service ─────────────────────────────────────────────────────────────
 const mockChatService = {
-  ask: jest.fn(),
-  getHistory: jest.fn(),
+  ask: vi.fn(),
+  getHistory: vi.fn(),
 };
 
 // ─── suite ────────────────────────────────────────────────────────────────────
@@ -16,7 +17,7 @@ describe('ChatController', () => {
   let controller: ChatController;
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ChatController],

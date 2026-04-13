@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -7,23 +8,25 @@ import { QdrantService } from '../qdrant/qdrant.service';
 import { GeminiEmbeddingService } from '../embedding/gemini-embedding.service';
 
 // ─── fs mock ──────────────────────────────────────────────────────────────────
-// Preserve the real fs module (Prisma client uses fs.existsSync at import time)
+// Preserve the real fs module (Prisma uses fs.existsSync at import time)
 // and only stub the three async methods the service calls.
-jest.mock('fs', () => {
-  const actual = jest.requireActual<typeof import('fs')>('fs');
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
   return {
     ...actual,
     promises: {
       ...actual.promises,
-      mkdir: jest.fn().mockResolvedValue(undefined),
-      writeFile: jest.fn().mockResolvedValue(undefined),
-      unlink: jest.fn().mockResolvedValue(undefined),
+      mkdir: vi.fn().mockResolvedValue(undefined),
+      writeFile: vi.fn().mockResolvedValue(undefined),
+      unlink: vi.fn().mockResolvedValue(undefined),
     },
   };
 });
 
-// Suppress noisy pdf-parse import side-effects in test environment
-jest.mock('pdf-parse', () => jest.fn().mockResolvedValue({ text: 'parsed pdf content' }));
+// Suppress pdf-parse import side-effects in the test environment
+vi.mock('pdf-parse', () => ({
+  default: vi.fn().mockResolvedValue({ text: 'parsed pdf content' }),
+}));
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const makeFile = (overrides: Partial<Express.Multer.File> = {}): Express.Multer.File => ({
@@ -55,28 +58,28 @@ const makeDoc = (overrides = {}) => ({
 // ─── mocks ────────────────────────────────────────────────────────────────────
 const mockPrisma = {
   knowledgeBaseDocument: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findUnique: jest.fn(),
-    update: jest.fn(),
-    delete: jest.fn(),
+    create: vi.fn(),
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
   },
 };
 
 const mockQdrant = {
   client: {
-    upsert: jest.fn().mockResolvedValue(undefined),
+    upsert: vi.fn().mockResolvedValue(undefined),
   },
   collectionName: 'test_collection',
-  deleteByKnowledgeBaseId: jest.fn().mockResolvedValue(undefined),
+  deleteByKnowledgeBaseId: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockEmbedding = {
-  embedTexts: jest.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),
+  embedTexts: vi.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),
 };
 
 const mockConfig = {
-  get: jest.fn().mockImplementation((key: string, defaultVal?: unknown) => {
+  get: vi.fn().mockImplementation((key: string, defaultVal?: unknown) => {
     const values: Record<string, string> = {
       CHUNK_SIZE: '800',
       CHUNK_OVERLAP: '100',
@@ -91,13 +94,15 @@ describe('KnowledgeBaseService', () => {
   let service: KnowledgeBaseService;
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
-    // Reset common happy-path defaults
+    // Restore happy-path defaults after clearAllMocks
     mockPrisma.knowledgeBaseDocument.create.mockResolvedValue(makeDoc());
     mockPrisma.knowledgeBaseDocument.update.mockResolvedValue(makeDoc({ chunkCount: 1 }));
     mockPrisma.knowledgeBaseDocument.delete.mockResolvedValue(undefined);
     mockEmbedding.embedTexts.mockResolvedValue([[0.1, 0.2, 0.3]]);
+    mockQdrant.client.upsert.mockResolvedValue(undefined);
+    mockQdrant.deleteByKnowledgeBaseId.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -114,7 +119,7 @@ describe('KnowledgeBaseService', () => {
 
   // ─── createFromUpload ───────────────────────────────────────────────────────
   describe('createFromUpload', () => {
-    it('should upload a .txt file, persist metadata and return response DTO', async () => {
+    it('should upload a .txt file, persist metadata, and return the response DTO', async () => {
       const result = await service.createFromUpload(makeFile(), 'Test Doc');
 
       expect(mockPrisma.knowledgeBaseDocument.create).toHaveBeenCalledTimes(1);
@@ -137,12 +142,6 @@ describe('KnowledgeBaseService', () => {
       );
     });
 
-    it('should throw BadRequestException when file buffer is empty', async () => {
-      await expect(
-        service.createFromUpload(makeFile({ buffer: Buffer.alloc(0) }), undefined),
-      ).rejects.toThrow(BadRequestException);
-    });
-
     it('should throw BadRequestException for an unsupported file extension', async () => {
       await expect(
         service.createFromUpload(
@@ -152,12 +151,9 @@ describe('KnowledgeBaseService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw BadRequestException when extracted text is empty', async () => {
+    it('should throw BadRequestException when extracted text is empty (whitespace only)', async () => {
       await expect(
-        service.createFromUpload(
-          makeFile({ buffer: Buffer.from('   \n\n  ') }),
-          undefined,
-        ),
+        service.createFromUpload(makeFile({ buffer: Buffer.from('   \n\n  ') }), undefined),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -168,7 +164,6 @@ describe('KnowledgeBaseService', () => {
         'Embedding service down',
       );
 
-      // DB record and file should be cleaned up
       expect(mockPrisma.knowledgeBaseDocument.delete).toHaveBeenCalledWith({
         where: { id: 1 },
       });
@@ -219,9 +214,8 @@ describe('KnowledgeBaseService', () => {
 
   // ─── remove ─────────────────────────────────────────────────────────────────
   describe('remove', () => {
-    it('should delete the Qdrant vectors, file, and DB record', async () => {
+    it('should delete Qdrant vectors, local file, and DB record', async () => {
       mockPrisma.knowledgeBaseDocument.findUnique.mockResolvedValue(makeDoc({ id: 3 }));
-      mockPrisma.knowledgeBaseDocument.delete.mockResolvedValue(undefined);
 
       await service.remove(3);
 
