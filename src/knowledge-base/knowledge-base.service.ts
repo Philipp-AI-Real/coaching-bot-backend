@@ -221,6 +221,10 @@ export class KnowledgeBaseService {
       });
       return this.toResponse(updated);
     } catch (e) {
+      this.logger.error(
+        `Failed to ingest document ${created.id} (${file.originalname})`,
+        e instanceof Error ? e.stack : String(e),
+      );
       await this.safeDeleteFile(absolutePath);
       await this.prisma.knowledgeBaseDocument
         .delete({ where: { id: created.id } })

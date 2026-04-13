@@ -85,6 +85,9 @@ Coding Rules (binding for Claude Code):
 - Passwords: bcrypt, min 12 rounds
 - Secrets: always via env variables, never hardcoded
 - No console.log in production (use NestJS Logger)
+- Swagger/OpenAPI: every controller must have @ApiTags, every endpoint @ApiOperation and @ApiResponse decorators
+- Swagger UI available at /api in development
+- Every DTO must have @ApiProperty on all fields
 API Contract
 
 The backend OWNS and DEFINES the API contract.
@@ -162,8 +165,10 @@ Phase 1: Get backend running locally 🚀
   [ ] .env created (GEMINI_API_KEY filled in, DATABASE_URL using port 5433)
   [ ] npm install completed
   [ ] npx prisma migrate deploy completed
+  [ ] npx prisma migrate dev (not just migrate deploy) for first local setup
   [ ] npm run start:dev – API responds on localhost:3000
   [ ] GET /health returns { status: 'ok' }
+  [ ] Verify GET /api renders Swagger UI correctly
   [ ] POST /chat returns a RAG answer (first end-to-end test)
   [ ] POST /auth/login endpoint exists and returns JWT
 
@@ -224,6 +229,9 @@ Key decisions already made:
 2026-04-13  Domain: coaching-api.dividendenquelle.de
 2026-04-13  DB + Qdrant live in this (backend) repo's docker-compose only
 2026-04-13  Frontend repo is separate: coaching-bot-frontend
+2026-04-13  prisma migrate dev (not migrate deploy) needed for first local setup — migrate deploy only runs existing migrations, migrate dev creates them
+2026-04-13  HttpExceptionFilter was silently swallowing non-HttpException errors — fixed by adding Logger for all 500-level errors
+2026-04-13  Prisma binaryTargets must include "windows" — backend was generated on Mac (darwin-arm64), added ["native", "windows"] to schema.prisma
 Instructions for Claude Code
 ROLE:
   Senior Backend Engineer with expertise in NestJS, TypeScript,
@@ -275,6 +283,8 @@ SELF-AUDIT (required after every phase):
   - CORS configured for frontend URL only?
   - JWT validated on all protected endpoints?
   - No Prisma error messages exposed directly to client?
+  - Swagger decorators updated on all changed controllers?
+  - GET /api still renders correctly after changes?
 
 ERROR HANDLING (non-negotiable):
   - Every handler: try/catch wrapping the entire body
