@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { QdrantService } from '../qdrant/qdrant.service';
 import { GeminiEmbeddingService } from '../embedding/gemini-embedding.service';
-import { KnowledgeBaseDocument } from '../../generated/prisma';
+import { KnowledgeBaseDocument } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import { join } from 'path';
