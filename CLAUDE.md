@@ -158,21 +158,21 @@ Implementation Plan
 
 Status: ✅ Done | 🚀 Current focus | ⏳ Planned | ❌ Cancelled
 
-Phase 1: Get backend running locally 🚀
+Phase 1: Get backend running locally ✅
   [x] Docker Desktop running
   [x] coaching-postgres container (port 5433:5432)
   [x] coaching-qdrant container (port 6333:6333)
-  [ ] .env created (GEMINI_API_KEY filled in, DATABASE_URL using port 5433)
-  [ ] npm install completed
-  [ ] npx prisma migrate deploy completed
-  [ ] npx prisma migrate dev (not just migrate deploy) for first local setup
-  [ ] npm run start:dev – API responds on localhost:3000
-  [ ] GET /health returns { status: 'ok' }
-  [ ] Verify GET /api renders Swagger UI correctly
-  [ ] POST /chat returns a RAG answer (first end-to-end test)
-  [ ] POST /auth/login endpoint exists and returns JWT
+  [x] .env created (GEMINI_API_KEY filled in, DATABASE_URL using port 5433)
+  [x] npm install completed
+  [x] npx prisma migrate deploy completed
+  [x] npx prisma migrate dev (not just migrate deploy) for first local setup
+  [x] npm run start:dev – API responds on localhost:3000
+  [x] GET /health returns { status: 'ok' }
+  [x] Verify GET /api renders Swagger UI correctly
+  [x] POST /chat returns a RAG answer (first end-to-end test)
+  [ ] POST /auth/login endpoint exists and returns JWT  ← Phase 2
 
-Phase 2: Auth & User Management ⏳
+Phase 2: Auth & User Management 🚀
   [ ] User model in Prisma schema (id, username, passwordHash, role, createdAt)
   [ ] POST /auth/login – bcrypt compare, return JWT
   [ ] GET /auth/me – validate JWT, return user
