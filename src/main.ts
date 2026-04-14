@@ -29,6 +29,21 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // CORS: allow frontend origins (dev + production)
+  const allowedOrigins = [
+    'http://localhost:3007',
+    'https://coaching.dividendenquelle.de',
+  ];
+  if (process.env.FRONTEND_URL) {
+    allowedOrigins.push(process.env.FRONTEND_URL);
+  }
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
+
   // Serve uploaded knowledge-base files at /storage/...
   app.useStaticAssets(join(process.cwd(), 'storage'), {
     prefix: '/storage/',
