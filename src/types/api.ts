@@ -8,7 +8,7 @@
 //   - After every change: update version + date below, notify frontend
 //   - Never break existing response shapes without coordinating with frontend
 //
-// Last updated: 2026-04-13 | Version: 1.2.0
+// Last updated: 2026-04-14 | Version: 1.3.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -21,6 +21,30 @@ export interface ApiResponse<T> {
   message: string
   data: T | null
 }
+
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+// POST /auth/login
+// GET  /auth/me
+
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export interface AuthUser {
+  id: number
+  username: string
+  role: 'admin' | 'user'
+}
+
+export interface LoginData {
+  accessToken: string
+  user: AuthUser
+}
+
+// POST /auth/login  → ApiResponse<LoginData>
+// GET  /auth/me     → ApiResponse<AuthUser>
 
 
 // ─── Health ───────────────────────────────────────────────────────────────────
@@ -102,6 +126,9 @@ export interface KnowledgeBaseDeleteData {
 
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
+// 1.3.0 – 2026-04-14  Phase 2 Auth: added LoginRequest, AuthUser, LoginData
+//                     POST /auth/login → ApiResponse<LoginData>
+//                     GET  /auth/me    → ApiResponse<AuthUser>
 // 1.2.0 – 2026-04-13  Full audit against controllers + services:
 //                     - ChatAskRequest: removed non-existent sessionId field
 //                     - ChatAskData: field is "reply", not "answer"; removed

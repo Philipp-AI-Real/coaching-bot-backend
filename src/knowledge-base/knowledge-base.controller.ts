@@ -7,10 +7,12 @@ import {
   ParseIntPipe,
   Post,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { KnowledgeBaseResponseDto } from './dto/knowledge-base-response.dto';
@@ -18,6 +20,8 @@ import { KnowledgeBaseResponseDto } from './dto/knowledge-base-response.dto';
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 @ApiTags('knowledge-base')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('knowledge-base')
 export class KnowledgeBaseController {
   constructor(private readonly knowledgeBase: KnowledgeBaseService) {}

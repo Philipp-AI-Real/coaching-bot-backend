@@ -1,11 +1,14 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { ChatService } from './chat.service';
 import { AskChatDto } from './dto/ask-chat.dto';
 import { ChatHistoryQueryDto } from './dto/chat-history-query.dto';
 
 @ApiTags('chat')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chat: ChatService) {}

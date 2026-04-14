@@ -46,9 +46,11 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Coaching Bot Pilot')
     .setDescription(
-      'Pilot API: knowledge base CRUD; chat ask (RAG + Gemini) and paginated chat history. To replace KB content, delete then upload.',
+      'Pilot API: knowledge base CRUD; chat ask (RAG + Gemini) and paginated chat history. To replace KB content, delete then upload.\n\n' +
+      '**Auth:** Login at POST /auth/login to receive a Bearer token. Click "Authorize" and paste it.',
     )
     .setVersion('0.1')
+    .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api', app, document);
