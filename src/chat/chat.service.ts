@@ -54,6 +54,7 @@ export class ChatService {
       reply = await this.geminiChat.generateCoachReply({
         userMessage: message,
         contextChunks,
+        language: dto.language ?? 'en',
       });
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);

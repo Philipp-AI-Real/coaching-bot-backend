@@ -6,6 +6,7 @@ import { ChatModule } from './chat/chat.module';
 import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { QdrantModule } from './qdrant/qdrant.module';
+import { SpeechModule } from './speech/speech.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { QdrantModule } from './qdrant/qdrant.module';
     QdrantModule,
     KnowledgeBaseModule,
     ChatModule,
+    SpeechModule,
   ],
   controllers: [AppController],
   providers: [],

@@ -26,12 +26,14 @@ export class GeminiChatService {
   async generateCoachReply(params: {
     userMessage: string;
     contextChunks: string[];
+    language?: string;
   }): Promise<string> {
     const model =
       this.config.get<string>('GEMINI_CHAT_MODEL')?.trim() ||
       DEFAULT_CHAT_MODEL;
 
-    const system = `You are a warm, professional coach and psychologist. Answer using the knowledge base context when it is relevant. If the context does not contain enough information, say so honestly and give safe, general coaching guidance. Be concise and supportive.`;
+    const lang = params.language === 'de' ? 'German' : 'English';
+    const system = `You are a warm, professional coach and psychologist. Answer using the knowledge base context when it is relevant. If the context does not contain enough information, say so honestly and give safe, general coaching guidance. Be concise and supportive. Always respond in ${lang}.`;
 
     let contextBlock = '';
     if (params.contextChunks.length) {

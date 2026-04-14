@@ -8,7 +8,7 @@
 //   - After every change: update version + date below, notify frontend
 //   - Never break existing response shapes without coordinating with frontend
 //
-// Last updated: 2026-04-14 | Version: 1.3.0
+// Last updated: 2026-04-14 | Version: 1.5.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -35,7 +35,7 @@ export interface LoginRequest {
 export interface AuthUser {
   id: number
   username: string
-  role: 'admin' | 'user'
+  role: string
 }
 
 export interface LoginData {
@@ -61,8 +61,11 @@ export interface HealthData {
 // POST /chat/ask
 // GET  /chat/history
 
+export type SupportedLanguage = 'en' | 'de'
+
 export interface ChatAskRequest {
   message: string
+  language?: SupportedLanguage   // Gemini responds in this language (default: 'en')
 }
 
 export interface ChatAskData {
@@ -113,6 +116,23 @@ export interface KnowledgeBaseDeleteData {
 }
 
 
+// ─── Speech ──────────────────────────────────────────────────────────────────
+// POST /speech/transcribe  – multipart/form-data { audio: File, language?: 'en'|'de' }
+// POST /speech/synthesize  – JSON { text: string, language: 'en'|'de' }
+
+export interface TranscribeData {
+  text: string
+}
+
+export interface SynthesizeRequest {
+  text: string
+  language: SupportedLanguage   // selects voice (EN or DE via env)
+}
+
+// POST /speech/transcribe  → ApiResponse<TranscribeData>
+// POST /speech/synthesize  → streams audio/mpeg (no ApiResponse wrapper)
+
+
 // ─── HTTP Status Codes (frontend error handling reference) ───────────────────
 //   200 – OK              GET success
 //   201 – Created         POST success
@@ -126,6 +146,12 @@ export interface KnowledgeBaseDeleteData {
 
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
+// 1.5.0 – 2026-04-14  Speech module: TranscribeData, SynthesizeRequest
+//                     ChatAskRequest: added optional language field ('en'|'de')
+//                     Added SupportedLanguage type alias
+//                     No JWT required on /speech endpoints
+// 1.4.0 – 2026-04-14  AuthUser.role changed from 'admin' | 'user' to string
+//                     (matches actual service response)
 // 1.3.0 – 2026-04-14  Phase 2 Auth: added LoginRequest, AuthUser, LoginData
 //                     POST /auth/login → ApiResponse<LoginData>
 //                     GET  /auth/me    → ApiResponse<AuthUser>
