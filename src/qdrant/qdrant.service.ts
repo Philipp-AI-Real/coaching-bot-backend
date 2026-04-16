@@ -24,7 +24,7 @@ export class QdrantService implements OnModuleInit {
       'QDRANT_COLLECTION',
       'coaching_knowledge',
     );
-    this.vectorSize = Number(this.config.get('QDRANT_VECTOR_SIZE', 768));
+    this.vectorSize = Number(this.config.get('QDRANT_VECTOR_SIZE', 1536));
   }
 
   get collectionName(): string {
@@ -34,17 +34,47 @@ export class QdrantService implements OnModuleInit {
   async onModuleInit() {
     const { collections } = await this.client.getCollections();
     const exists = collections.some((c) => c.name === this.collection);
+
     if (!exists) {
       await this.client.createCollection(this.collection, {
-        vectors: {
-          size: this.vectorSize,
-          distance: 'Cosine',
-        },
+        vectors: { size: this.vectorSize, distance: 'Cosine' },
       });
       this.logger.log(
         `Created Qdrant collection "${this.collection}" (${this.vectorSize}d)`,
       );
+      return;
     }
+
+    const currentSize = await this.getCollectionVectorSize();
+    if (currentSize !== this.vectorSize) {
+      this.logger.warn(
+        `Recreating Qdrant collection with new vector size ${this.vectorSize} (was ${currentSize ?? 'unknown'})`,
+      );
+      await this.client.deleteCollection(this.collection);
+      await this.client.createCollection(this.collection, {
+        vectors: { size: this.vectorSize, distance: 'Cosine' },
+      });
+      this.logger.log(
+        `Recreated Qdrant collection "${this.collection}" (${this.vectorSize}d). All previously-ingested vectors are gone — re-upload documents.`,
+      );
+    }
+  }
+
+  private async getCollectionVectorSize(): Promise<number | undefined> {
+    const info = await this.client.getCollection(this.collection);
+    const vectors = info.config?.params?.vectors as
+      | { size?: number }
+      | Record<string, { size?: number }>
+      | undefined;
+
+    if (!vectors) return undefined;
+    // Single unnamed vector config: { size, distance }
+    if (typeof (vectors as { size?: number }).size === 'number') {
+      return (vectors as { size: number }).size;
+    }
+    // Named-vectors config: { name1: { size, distance }, ... } — return the first one.
+    const first = Object.values(vectors as Record<string, { size?: number }>)[0];
+    return typeof first?.size === 'number' ? first.size : undefined;
   }
 
   async deleteByKnowledgeBaseId(knowledgeBaseId: number): Promise<void> {

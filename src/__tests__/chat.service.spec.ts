@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QdrantService } from '../qdrant/qdrant.service';
-import { GeminiEmbeddingService } from '../embedding/gemini-embedding.service';
+import { EmbeddingService } from '../embedding/embedding.service';
 import { OpenAIChatService } from '../chat/openai-chat.service';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ describe('ChatService', () => {
         ChatService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: QdrantService, useValue: mockQdrant },
-        { provide: GeminiEmbeddingService, useValue: mockEmbedding },
+        { provide: EmbeddingService, useValue: mockEmbedding },
         { provide: OpenAIChatService, useValue: mockOpenAIChat },
         { provide: ConfigService, useValue: mockConfig },
       ],

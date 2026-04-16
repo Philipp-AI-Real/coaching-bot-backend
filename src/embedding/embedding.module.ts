@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { GeminiEmbeddingService } from './gemini-embedding.service';
+import { EmbeddingService } from './embedding.service';
 
 @Module({
-  providers: [GeminiEmbeddingService],
-  exports: [GeminiEmbeddingService],
+  providers: [EmbeddingService],
+  exports: [EmbeddingService],
 })
 export class EmbeddingModule {}

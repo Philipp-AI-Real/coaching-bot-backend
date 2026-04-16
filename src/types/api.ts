@@ -8,7 +8,7 @@
 //   - After every change: update version + date below, notify frontend
 //   - Never break existing response shapes without coordinating with frontend
 //
-// Last updated: 2026-04-16 | Version: 1.7.0
+// Last updated: 2026-04-16 | Version: 1.8.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -170,6 +170,14 @@ export interface SynthesizeRequest {
 
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
+// 1.8.0 – 2026-04-16  Internal: embeddings swapped Gemini → OpenAI
+//                     (text-embedding-3-small, 1536 dims). Stack is now fully
+//                     OpenAI; @google/genai removed. Qdrant collection is
+//                     auto-recreated on startup if its vector dim differs
+//                     from QDRANT_VECTOR_SIZE (now 1536). All previously
+//                     ingested documents must be re-uploaded via
+//                     POST /knowledge-base after deployment. No request /
+//                     response shape changes — frontend code unaffected.
 // 1.7.0 – 2026-04-16  Internal: chat backend swapped Gemini → OpenAI for the
 //                     RAG generation step (model: OPENAI_CHAT_MODEL, default
 //                     "gpt-4o-mini"). Embeddings still use Gemini.

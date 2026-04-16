@@ -61,7 +61,7 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Coaching Bot Pilot')
     .setDescription(
-      'Pilot API: knowledge base CRUD; chat ask (RAG + Gemini) and paginated chat history. To replace KB content, delete then upload.\n\n' +
+      'Pilot API: knowledge base CRUD; chat ask (RAG + OpenAI) and paginated chat history. To replace KB content, delete then upload.\n\n' +
       '**Auth:** Login at POST /auth/login to receive a Bearer token. Click "Authorize" and paste it.',
     )
     .setVersion('0.1')
@@ -84,5 +84,8 @@ async function bootstrap() {
   logger.log(`Qdrant REST API: ${q.rest}`);
   logger.log(`Qdrant Web UI: ${q.dashboard}`);
   logger.log(`Qdrant GRPC: ${q.grpc}`);
+  logger.warn(
+    '\u26A0\uFE0F  Embeddings changed to OpenAI. Re-upload all documents.',
+  );
 }
 void bootstrap();

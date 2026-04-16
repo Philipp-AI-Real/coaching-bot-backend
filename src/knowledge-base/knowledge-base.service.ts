@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { QdrantService } from '../qdrant/qdrant.service';
-import { GeminiEmbeddingService } from '../embedding/gemini-embedding.service';
+import { EmbeddingService } from '../embedding/embedding.service';
 import { KnowledgeBaseDocument } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
@@ -26,7 +26,7 @@ export class KnowledgeBaseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly qdrant: QdrantService,
-    private readonly embedding: GeminiEmbeddingService,
+    private readonly embedding: EmbeddingService,
     private readonly config: ConfigService,
   ) {}
 

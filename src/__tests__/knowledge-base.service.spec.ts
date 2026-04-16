@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QdrantService } from '../qdrant/qdrant.service';
-import { GeminiEmbeddingService } from '../embedding/gemini-embedding.service';
+import { EmbeddingService } from '../embedding/embedding.service';
 
 // ─── fs mock ──────────────────────────────────────────────────────────────────
 // Preserve the real fs module (Prisma uses fs.existsSync at import time)
@@ -109,7 +109,7 @@ describe('KnowledgeBaseService', () => {
         KnowledgeBaseService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: QdrantService, useValue: mockQdrant },
-        { provide: GeminiEmbeddingService, useValue: mockEmbedding },
+        { provide: EmbeddingService, useValue: mockEmbedding },
         { provide: ConfigService, useValue: mockConfig },
       ],
     }).compile();

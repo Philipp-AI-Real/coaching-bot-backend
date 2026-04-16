@@ -15,7 +15,7 @@ Selected Type: C
 Vision & Goal
 Project Name: Coaching Bot Pilot – Backend
 Client: Philipp (internal)
-Goal: NestJS REST API powering an AI coaching assistant. Implements a RAG pipeline (Embed → Retrieve → Generate) using Google Gemini and Qdrant. Manages users, chat history, and document knowledge base. Single source of truth for all data and business logic.
+Goal: NestJS REST API powering an AI coaching assistant. Implements a RAG pipeline (Embed → Retrieve → Generate) using OpenAI and Qdrant. Manages users, chat history, and document knowledge base. Single source of truth for all data and business logic.
 Frontend Repo: github.com/Philipp-AI-Real/coaching-bot-frontend
 API Base URL (dev): http://localhost:3000
 API Base URL (prod): https://coaching-api.dividendenquelle.de
@@ -39,9 +39,9 @@ System / Technical:
 🔴 JWT validation on ALL protected endpoints (every /chat and /knowledge request)
 🔴 Passwords stored as bcrypt hash (min 12 rounds) – never plaintext
 🔴 CORS locked to frontend domain only (coaching.dividendenquelle.de)
-🔴 RAG pipeline: Embed → Retrieve (Qdrant cosine similarity) → Generate (Gemini)
+🔴 RAG pipeline: Embed → Retrieve (Qdrant cosine similarity) → Generate (OpenAI)
 🔴 Document chunking: ~800 chars, 100 overlap
-🔴 Embeddings: gemini-embedding-2-preview, 768 dimensions
+🔴 Embeddings: text-embedding-3-small, 1536 dimensions
 🟡 Input validation on all POST/PATCH endpoints
 🟡 Rate limiting on auth endpoints
 🟡 No stack traces in production error responses
@@ -53,10 +53,13 @@ Stack:
 Framework:        NestJS + TypeScript (EXISTING codebase – do not rewrite)
 AI Orchestration: Built into NestJS modules (RAG pipeline)
 Chat Model:       OpenAI gpt-4o-mini (configurable via OPENAI_CHAT_MODEL)
-Embeddings:       Google Gemini gemini-embedding-2-preview (768 dims)
-                  NOTE: Chat moved from Gemini → OpenAI on 2026-04-16 (Gemini Pro
-                  account hit free-tier quota walls). Embeddings still Gemini.
-                  GeminiChatService kept in src/chat/ for reference only.
+Embeddings:       OpenAI text-embedding-3-small (1536 dims, configurable via
+                  OPENAI_EMBEDDING_MODEL)
+                  NOTE: Stack is fully OpenAI as of 2026-04-16. Gemini was
+                  removed after free-tier quota issues — @google/genai is no
+                  longer a dependency. Qdrant vector size is now 1536.
+                  Existing collections are auto-recreated on startup if their
+                  dim doesn't match — old documents must be re-uploaded.
 Vector Database:  Qdrant (Docker, port 6333 – internal only)
 Relational DB:    PostgreSQL 16 via Prisma ORM
 Secret Mgmt:      .env file (local) / environment variables (production)
@@ -238,7 +241,7 @@ Key decisions already made:
 Instructions for Claude Code
 ROLE:
   Senior Backend Engineer with expertise in NestJS, TypeScript,
-  PostgreSQL, Prisma, Qdrant, Google Gemini API, and REST API design.
+  PostgreSQL, Prisma, Qdrant, OpenAI API, and REST API design.
   You build secure, well-validated APIs that are the single source
   of truth for all data and AI business logic.
 
@@ -280,7 +283,7 @@ AFTER CODING:
 SELF-AUDIT (required after every phase):
   - try/catch around all async operations?
   - No hanging requests (timeouts set)?
-  - Null checks on all external API responses (Gemini, Qdrant)?
+  - Null checks on all external API responses (OpenAI, Qdrant)?
   - User input validated before hitting Prisma or Qdrant?
   - ENV variables checked on startup?
   - CORS configured for frontend URL only?
@@ -339,14 +342,15 @@ FILES_PUBLIC_BASE_URL="http://localhost:3000"
 JWT_SECRET="[min-64-random-characters]"
 JWT_EXPIRES_IN="7d"
 
-# Gemini (embeddings only)
-GEMINI_API_KEY="your-key-here"
-
-# OpenAI (chat / RAG generation)
+# OpenAI (chat + embeddings — single API key for both)
 OPENAI_API_KEY="sk-..."
 OPENAI_CHAT_MODEL="gpt-4o-mini"
 OPENAI_CHAT_TEMPERATURE="0.7"
 OPENAI_CHAT_MAX_OUTPUT_TOKENS="2048"
+OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
+
+# Gemini — no longer needed, can be removed
+GEMINI_API_KEY=""
 
 # RAG
 RAG_TOP_K="8"
@@ -358,7 +362,7 @@ QDRANT_PORT="6333"
 QDRANT_API_KEY=""
 QDRANT_USE_TLS="false"
 QDRANT_COLLECTION="coaching_bot_pilot_knowledge"
-QDRANT_VECTOR_SIZE="768"
+QDRANT_VECTOR_SIZE="1536"
 
 # Chunking
 CHUNK_SIZE="800"
@@ -504,7 +508,7 @@ Claude Code NEVER marks features ✅ without explicit user confirmation.
 ❌ Hetzner Object Storage
 ✅ Qdrant for vector/semantic search
 4. AI Integration
-✅ Google Gemini API (chat + embeddings)
+✅ OpenAI API (chat + embeddings)
 ✅ RAG pipeline (Qdrant retrieval)
 ✅ Document chunking (800 chars, 100 overlap)
 ⏳ Token usage tracking
