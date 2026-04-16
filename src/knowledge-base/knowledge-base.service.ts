@@ -14,8 +14,10 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import pdf from 'pdf-parse';
 import { KnowledgeBaseResponseDto } from './dto/knowledge-base-response.dto';
+import { BatchUploadResponseDto } from './dto/batch-upload-response.dto';
 
 const ALLOWED_EXT = new Set(['.txt', '.json', '.pdf']);
+const MAX_BATCH_FILES = 20;
 
 @Injectable()
 export class KnowledgeBaseService {
@@ -231,6 +233,47 @@ export class KnowledgeBaseService {
         .catch(() => undefined);
       throw e;
     }
+  }
+
+  async createFromUploadBatch(
+    files: Express.Multer.File[] | undefined,
+  ): Promise<BatchUploadResponseDto> {
+    if (!files?.length) {
+      throw new BadRequestException('At least one file is required');
+    }
+    if (files.length > MAX_BATCH_FILES) {
+      throw new BadRequestException(
+        `Too many files. Maximum is ${MAX_BATCH_FILES} per request.`,
+      );
+    }
+
+    const uploaded: BatchUploadResponseDto['uploaded'] = [];
+    const failed: BatchUploadResponseDto['failed'] = [];
+
+    // Sequential processing — avoids overwhelming Qdrant/Gemini.
+    for (const file of files) {
+      const filename = file?.originalname ?? 'unknown';
+      try {
+        const result = await this.createFromUpload(file);
+        uploaded.push({
+          id: result.id,
+          originalFilename: result.originalFilename,
+          chunkCount: result.chunkCount,
+        });
+      } catch (e) {
+        const error = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`Batch upload — failed for "${filename}": ${error}`);
+        failed.push({ filename, error });
+      }
+    }
+
+    return {
+      uploaded,
+      failed,
+      total: files.length,
+      succeeded: uploaded.length,
+      failed_count: failed.length,
+    };
   }
 
   private async safeDeleteFile(absolutePath: string): Promise<void> {

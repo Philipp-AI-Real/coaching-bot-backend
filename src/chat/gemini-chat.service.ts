@@ -1,16 +1,18 @@
 import { GoogleGenAI } from '@google/genai';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 const DEFAULT_CHAT_MODEL = 'gemini-2.5-flash';
 
 @Injectable()
 export class GeminiChatService {
+  private readonly logger = new Logger(GeminiChatService.name);
   private readonly client: GoogleGenAI | null;
+  private readonly apiKey: string;
 
   constructor(private readonly config: ConfigService) {
-    const apiKey = this.config.get<string>('GEMINI_API_KEY', '');
-    this.client = apiKey ? new GoogleGenAI({ apiKey }) : null;
+    this.apiKey = this.config.get<string>('GEMINI_API_KEY', '');
+    this.client = this.apiKey ? new GoogleGenAI({ apiKey: this.apiKey }) : null;
   }
 
   private getClient(): GoogleGenAI {
@@ -57,21 +59,32 @@ export class GeminiChatService {
     ${params.userMessage.trim()}`;
 
     const ai = this.getClient();
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        temperature: Number(this.config.get('GEMINI_CHAT_TEMPERATURE', 0.7)),
-        maxOutputTokens: Number(
-          this.config.get('GEMINI_CHAT_MAX_OUTPUT_TOKENS', 2048),
-        ),
-      },
-    });
 
-    const text = response.text?.trim();
-    if (!text) {
-      throw new Error('Gemini returned an empty response');
+    this.logger.debug(
+      `[Gemini call] model="${model}" apiKeyPrefix="${this.apiKey.slice(0, 10)}..." messageLen=${params.userMessage.length} contextChunks=${params.contextChunks.length}`,
+    );
+
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          temperature: Number(this.config.get('GEMINI_CHAT_TEMPERATURE', 0.7)),
+          maxOutputTokens: Number(
+            this.config.get('GEMINI_CHAT_MAX_OUTPUT_TOKENS', 2048),
+          ),
+        },
+      });
+
+      const text = response.text?.trim();
+      if (!text) {
+        throw new Error('Gemini returned an empty response');
+      }
+      return text;
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.logger.error(`[Gemini error] model="${model}" → ${err}`);
+      throw e;
     }
-    return text;
   }
 }

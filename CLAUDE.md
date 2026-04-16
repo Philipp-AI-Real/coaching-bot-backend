@@ -52,8 +52,11 @@ Architecture & Coding Principles
 Stack:
 Framework:        NestJS + TypeScript (EXISTING codebase – do not rewrite)
 AI Orchestration: Built into NestJS modules (RAG pipeline)
-Chat Model:       Google Gemini gemini-2.5-flash
+Chat Model:       OpenAI gpt-4o-mini (configurable via OPENAI_CHAT_MODEL)
 Embeddings:       Google Gemini gemini-embedding-2-preview (768 dims)
+                  NOTE: Chat moved from Gemini → OpenAI on 2026-04-16 (Gemini Pro
+                  account hit free-tier quota walls). Embeddings still Gemini.
+                  GeminiChatService kept in src/chat/ for reference only.
 Vector Database:  Qdrant (Docker, port 6333 – internal only)
 Relational DB:    PostgreSQL 16 via Prisma ORM
 Secret Mgmt:      .env file (local) / environment variables (production)
@@ -336,11 +339,14 @@ FILES_PUBLIC_BASE_URL="http://localhost:3000"
 JWT_SECRET="[min-64-random-characters]"
 JWT_EXPIRES_IN="7d"
 
-# Gemini
+# Gemini (embeddings only)
 GEMINI_API_KEY="your-key-here"
-GEMINI_CHAT_MODEL="gemini-2.5-flash"
-GEMINI_CHAT_TEMPERATURE="0.7"
-GEMINI_CHAT_MAX_OUTPUT_TOKENS="2048"
+
+# OpenAI (chat / RAG generation)
+OPENAI_API_KEY="sk-..."
+OPENAI_CHAT_MODEL="gpt-4o-mini"
+OPENAI_CHAT_TEMPERATURE="0.7"
+OPENAI_CHAT_MAX_OUTPUT_TOKENS="2048"
 
 # RAG
 RAG_TOP_K="8"

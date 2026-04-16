@@ -8,7 +8,7 @@
 //   - After every change: update version + date below, notify frontend
 //   - Never break existing response shapes without coordinating with frontend
 //
-// Last updated: 2026-04-14 | Version: 1.5.0
+// Last updated: 2026-04-16 | Version: 1.7.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -89,7 +89,8 @@ export interface ChatHistoryData {
 
 
 // ─── Knowledge Base (Documents) ───────────────────────────────────────────────
-// POST   /knowledge-base        – upload document (multipart/form-data, field: "file")
+// POST   /knowledge-base        – upload single document (multipart/form-data, field: "file")
+// POST   /knowledge-base/batch  – upload up to 20 documents (multipart/form-data, field: "files")
 // GET    /knowledge-base        – list all documents
 // GET    /knowledge-base/:id    – get single document
 // DELETE /knowledge-base/:id    – delete document
@@ -113,6 +114,29 @@ export interface KnowledgeBaseDocument {
 
 export interface KnowledgeBaseDeleteData {
   deletedId: number
+}
+
+// POST /knowledge-base/batch  → ApiResponse<BatchUploadData>
+// Multipart field name: "files" (array). Max 20 files, 20 MB each.
+// Files are processed sequentially server-side; partial success is reported per file.
+
+export interface BatchUploadSucceededItem {
+  id: number
+  originalFilename: string
+  chunkCount: number
+}
+
+export interface BatchUploadFailedItem {
+  filename: string
+  error: string
+}
+
+export interface BatchUploadData {
+  uploaded: BatchUploadSucceededItem[]
+  failed: BatchUploadFailedItem[]
+  total: number
+  succeeded: number
+  failed_count: number
 }
 
 
@@ -146,6 +170,17 @@ export interface SynthesizeRequest {
 
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
+// 1.7.0 – 2026-04-16  Internal: chat backend swapped Gemini → OpenAI for the
+//                     RAG generation step (model: OPENAI_CHAT_MODEL, default
+//                     "gpt-4o-mini"). Embeddings still use Gemini.
+//                     No request/response shape changes — POST /chat/ask still
+//                     returns ChatAskData { reply: string }. Frontend does not
+//                     need code changes; this entry is documentation only.
+// 1.6.0 – 2026-04-16  Knowledge Base: added POST /knowledge-base/batch
+//                     New types: BatchUploadData, BatchUploadSucceededItem,
+//                     BatchUploadFailedItem
+//                     Multipart field "files" (array), max 20 files, 20 MB each
+//                     Sequential processing; partial success supported
 // 1.5.0 – 2026-04-14  Speech module: TranscribeData, SynthesizeRequest
 //                     ChatAskRequest: added optional language field ('en'|'de')
 //                     Added SupportedLanguage type alias

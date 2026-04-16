@@ -9,7 +9,7 @@ import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QdrantService } from '../qdrant/qdrant.service';
 import { GeminiEmbeddingService } from '../embedding/gemini-embedding.service';
-import { GeminiChatService } from '../chat/gemini-chat.service';
+import { OpenAIChatService } from '../chat/openai-chat.service';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const mockMsg = (role: 'user' | 'assistant', content: string, id = 1) => ({
@@ -37,8 +37,8 @@ const mockEmbedding = {
   embedQuery: vi.fn(),
 };
 
-const mockGeminiChat = {
-  generateCoachReply: vi.fn(),
+const mockOpenAIChat = {
+  generateReply: vi.fn(),
 };
 
 const mockConfig = {
@@ -60,7 +60,7 @@ describe('ChatService', () => {
     mockQdrant.searchKnowledge.mockResolvedValue([
       { score: 0.9, knowledgeBaseId: 1, chunkIndex: 0, text: 'Context about coaching.' },
     ]);
-    mockGeminiChat.generateCoachReply.mockResolvedValue('Great coaching advice!');
+    mockOpenAIChat.generateReply.mockResolvedValue('Great coaching advice!');
     mockPrisma.chatMessage.create.mockResolvedValue(mockMsg('user', 'hello'));
     mockPrisma.$transaction.mockResolvedValue([]);
 
@@ -70,7 +70,7 @@ describe('ChatService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: QdrantService, useValue: mockQdrant },
         { provide: GeminiEmbeddingService, useValue: mockEmbedding },
-        { provide: GeminiChatService, useValue: mockGeminiChat },
+        { provide: OpenAIChatService, useValue: mockOpenAIChat },
         { provide: ConfigService, useValue: mockConfig },
       ],
     }).compile();
@@ -86,7 +86,7 @@ describe('ChatService', () => {
       expect(result).toEqual({ reply: 'Great coaching advice!' });
       expect(mockEmbedding.embedQuery).toHaveBeenCalledWith('How can I improve focus?');
       expect(mockQdrant.searchKnowledge).toHaveBeenCalledTimes(1);
-      expect(mockGeminiChat.generateCoachReply).toHaveBeenCalledTimes(1);
+      expect(mockOpenAIChat.generateReply).toHaveBeenCalledTimes(1);
       expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
     });
 
@@ -94,8 +94,10 @@ describe('ChatService', () => {
       await service.ask({ message: '  focus  ' });
 
       expect(mockEmbedding.embedQuery).toHaveBeenCalledWith('focus');
-      expect(mockGeminiChat.generateCoachReply).toHaveBeenCalledWith(
-        expect.objectContaining({ userMessage: 'focus' }),
+      // ChatService now passes (systemPrompt, userMessage) to OpenAIChatService.
+      expect(mockOpenAIChat.generateReply).toHaveBeenCalledWith(
+        expect.any(String),
+        'focus',
       );
     });
 
@@ -115,8 +117,8 @@ describe('ChatService', () => {
       );
     });
 
-    it('should throw ServiceUnavailableException when Gemini chat generation fails', async () => {
-      mockGeminiChat.generateCoachReply.mockRejectedValue(new Error('Gemini chat down'));
+    it('should throw ServiceUnavailableException when OpenAI chat generation fails', async () => {
+      mockOpenAIChat.generateReply.mockRejectedValue(new Error('OpenAI chat down'));
 
       await expect(service.ask({ message: 'hello' })).rejects.toThrow(
         ServiceUnavailableException,

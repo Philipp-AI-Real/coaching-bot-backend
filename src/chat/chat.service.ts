@@ -1,22 +1,25 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { QdrantService } from '../qdrant/qdrant.service';
 import { GeminiEmbeddingService } from '../embedding/gemini-embedding.service';
-import { GeminiChatService } from './gemini-chat.service';
+import { OpenAIChatService } from './openai-chat.service';
 import { AskChatDto } from './dto/ask-chat.dto';
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly qdrant: QdrantService,
     private readonly embedding: GeminiEmbeddingService,
-    private readonly geminiChat: GeminiChatService,
+    private readonly openaiChat: OpenAIChatService,
     private readonly config: ConfigService,
   ) {}
 
@@ -49,15 +52,21 @@ export class ChatService {
       contextChunks.push(h.text);
     }
 
+    const systemPrompt = this.buildSystemPrompt(
+      contextChunks,
+      dto.language ?? 'en',
+    );
+
     let reply: string;
     try {
-      reply = await this.geminiChat.generateCoachReply({
-        userMessage: message,
-        contextChunks,
-        language: dto.language ?? 'en',
-      });
+      reply = await this.openaiChat.generateReply(systemPrompt, message);
     } catch (e) {
+      // ServiceUnavailableException (busy/overloaded) propagates as-is.
+      if (e instanceof ServiceUnavailableException) {
+        throw e;
+      }
       const err = e instanceof Error ? e.message : String(e);
+      this.logger.error(`OpenAI generation failed: ${err}`);
       throw new ServiceUnavailableException(`Coach reply failed: ${err}`);
     }
 
@@ -73,6 +82,32 @@ export class ChatService {
     return {
       reply,
     };
+  }
+
+  private buildSystemPrompt(contextChunks: string[], language: string): string {
+    const lang = language === 'de' ? 'German' : 'English';
+    const persona = `You are a warm, professional coach and psychologist. Answer using the knowledge base context when it is relevant. If the context does not contain enough information, say so honestly and give safe, general coaching guidance. Be concise and supportive. Always respond in ${lang}.`;
+
+    let contextBlock: string;
+    if (contextChunks.length) {
+      let joined = contextChunks
+        .map((c, i) => `[${i + 1}] ${c.trim()}`)
+        .join('\n\n');
+      const maxChars = Number(
+        this.config.get('RAG_CONTEXT_MAX_CHARS', 24000),
+      );
+      if (joined.length > maxChars) {
+        joined = `${joined.slice(0, maxChars)}\n\n[Context truncated…]`;
+      }
+      contextBlock = joined;
+    } else {
+      contextBlock = '(No matching passages were found in the knowledge base.)';
+    }
+
+    return `${persona}
+
+### Knowledge base excerpts
+${contextBlock}`;
   }
 
   async getHistory(page = 1, limit = 20) {
