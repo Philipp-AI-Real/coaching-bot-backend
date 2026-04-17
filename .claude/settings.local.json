@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/test-gemini.mjs)",
+      "Bash(npm uninstall *)",
+      "Bash(curl -s http://localhost:6333/collections/coaching_bot_pilot_knowledge)",
+      "Bash(curl -s http://localhost:6333/collections)"
+    ]
+  }
+}

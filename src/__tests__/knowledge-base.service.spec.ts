@@ -66,16 +66,21 @@ const mockPrisma = {
   },
 };
 
+const VECTOR_DIM = 1536;
+const makeVector = (dim = VECTOR_DIM): number[] =>
+  Array.from({ length: dim }, (_, i) => i / dim);
+
 const mockQdrant = {
   client: {
     upsert: vi.fn().mockResolvedValue(undefined),
   },
   collectionName: 'test_collection',
+  expectedVectorSize: VECTOR_DIM,
   deleteByKnowledgeBaseId: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockEmbedding = {
-  embedTexts: vi.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),
+  embedTexts: vi.fn().mockResolvedValue([makeVector()]),
 };
 
 const mockConfig = {
@@ -100,7 +105,7 @@ describe('KnowledgeBaseService', () => {
     mockPrisma.knowledgeBaseDocument.create.mockResolvedValue(makeDoc());
     mockPrisma.knowledgeBaseDocument.update.mockResolvedValue(makeDoc({ chunkCount: 1 }));
     mockPrisma.knowledgeBaseDocument.delete.mockResolvedValue(undefined);
-    mockEmbedding.embedTexts.mockResolvedValue([[0.1, 0.2, 0.3]]);
+    mockEmbedding.embedTexts.mockResolvedValue([makeVector()]);
     mockQdrant.client.upsert.mockResolvedValue(undefined);
     mockQdrant.deleteByKnowledgeBaseId.mockResolvedValue(undefined);
 
@@ -167,6 +172,29 @@ describe('KnowledgeBaseService', () => {
       expect(mockPrisma.knowledgeBaseDocument.delete).toHaveBeenCalledWith({
         where: { id: 1 },
       });
+    });
+
+    it('should call Qdrant upsert with 1536-dim vectors matching the collection', async () => {
+      await service.createFromUpload(makeFile(), 'Test');
+
+      expect(mockQdrant.client.upsert).toHaveBeenCalledTimes(1);
+      const [collection, args] = mockQdrant.client.upsert.mock.calls[0];
+      expect(collection).toBe('test_collection');
+      expect(args.points).toHaveLength(1);
+      expect(args.points[0].vector).toHaveLength(VECTOR_DIM);
+      expect(args.points[0].payload).toMatchObject({
+        knowledgeBaseId: 1,
+        chunkIndex: 0,
+      });
+    });
+
+    it('should refuse to upsert when embedding dim does not match the collection', async () => {
+      mockEmbedding.embedTexts.mockResolvedValue([makeVector(768)]);
+
+      await expect(service.createFromUpload(makeFile(), undefined)).rejects.toThrow(
+        /Embedding dimension mismatch.*1536.*768/,
+      );
+      expect(mockQdrant.client.upsert).not.toHaveBeenCalled();
     });
   });
 

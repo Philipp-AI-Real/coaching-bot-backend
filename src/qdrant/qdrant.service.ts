@@ -25,10 +25,17 @@ export class QdrantService implements OnModuleInit {
       'coaching_knowledge',
     );
     this.vectorSize = Number(this.config.get('QDRANT_VECTOR_SIZE', 1536));
+    this.logger.log(
+      `Qdrant config loaded — collection="${this.collection}", vectorSize=${this.vectorSize} (from QDRANT_VECTOR_SIZE)`,
+    );
   }
 
   get collectionName(): string {
     return this.collection;
+  }
+
+  get expectedVectorSize(): number {
+    return this.vectorSize;
   }
 
   async onModuleInit() {

@@ -143,6 +143,20 @@ export class KnowledgeBaseService {
     if (!chunks.length) return;
     const vectors = await this.embedding.embedTexts(chunks);
     const collection = this.qdrant.collectionName;
+    const expectedSize = this.qdrant.expectedVectorSize;
+    const actualSize = vectors[0]?.length ?? 0;
+
+    this.logger.log(
+      `Ingest kb=${knowledgeBaseId} → collection="${collection}", chunks=${chunks.length}, vectorDim=${actualSize}, expected=${expectedSize}`,
+    );
+
+    if (actualSize !== expectedSize) {
+      throw new Error(
+        `Embedding dimension mismatch: collection expects ${expectedSize} but embeddings are ${actualSize}. ` +
+          `Check QDRANT_VECTOR_SIZE in .env matches the embedding model's output dimensions.`,
+      );
+    }
+
     const batchSize = 64;
     for (let i = 0; i < chunks.length; i += batchSize) {
       const sliceChunks = chunks.slice(i, i + batchSize);
