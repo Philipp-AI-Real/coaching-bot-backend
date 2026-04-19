@@ -9,11 +9,15 @@ datasource db {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  username     String   @unique
-  passwordHash String
-  role         String   @default("user") // "admin" | "user"
-  createdAt    DateTime @default(now())
+  id              Int      @id @default(autoincrement())
+  username        String   @unique
+  passwordHash    String
+  role            String   @default("user") // "admin" | "user"
+  avatarUrl       String?  // relative path to uploaded avatar
+  logoUrl         String?  // relative path to uploaded logo
+  defaultLanguage String   @default("en") // 'en' | 'de'
+  soundEnabled    Boolean  @default(true)
+  createdAt       DateTime @default(now())
 
   @@map("users")
 }

@@ -1,0 +1,105 @@
+services:
+  app:
+    container_name: coaching-bot-backend-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3006:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+
+      # Postgres — resolved through the compose-internal "db" hostname
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-coaching_bot_pilot}?schema=public"
+
+      # File serving — public base URL used for avatar/logo/knowledge-base URLs
+      FILES_PUBLIC_BASE_URL: "${FILES_PUBLIC_BASE_URL:-https://coaching-api.dividendenquelle.de}"
+
+      # CORS — frontend origin in production
+      FRONTEND_URL: "${FRONTEND_URL:-https://coaching.dividendenquelle.de}"
+
+      # Auth
+      JWT_SECRET: "${JWT_SECRET}"
+      JWT_EXPIRES_IN: "${JWT_EXPIRES_IN:-7d}"
+
+      # OpenAI — chat + embeddings
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      OPENAI_CHAT_MODEL: "${OPENAI_CHAT_MODEL:-gpt-4o-mini}"
+      OPENAI_CHAT_TEMPERATURE: "${OPENAI_CHAT_TEMPERATURE:-0.7}"
+      OPENAI_CHAT_MAX_OUTPUT_TOKENS: "${OPENAI_CHAT_MAX_OUTPUT_TOKENS:-2048}"
+      OPENAI_EMBEDDING_MODEL: "${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}"
+
+      # RAG
+      RAG_TOP_K: "${RAG_TOP_K:-8}"
+      RAG_CONTEXT_MAX_CHARS: "${RAG_CONTEXT_MAX_CHARS:-24000}"
+
+      # Qdrant — resolved through the compose-internal "qdrant" hostname
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      QDRANT_USE_TLS: "false"
+      QDRANT_API_KEY: "${QDRANT_API_KEY:-}"
+      QDRANT_COLLECTION: "${QDRANT_COLLECTION:-coaching_bot_pilot_knowledge}"
+      QDRANT_VECTOR_SIZE: "${QDRANT_VECTOR_SIZE:-1536}"
+
+      # Chunking
+      CHUNK_SIZE: "${CHUNK_SIZE:-800}"
+      CHUNK_OVERLAP: "${CHUNK_OVERLAP:-100}"
+
+      # ElevenLabs / Speech
+      ELEVENLABS_API_KEY: "${ELEVENLABS_API_KEY}"
+      ELEVENLABS_VOICE_ID_EN: "${ELEVENLABS_VOICE_ID_EN}"
+      ELEVENLABS_VOICE_ID_DE: "${ELEVENLABS_VOICE_ID_DE}"
+    volumes:
+      # Persist uploaded avatars / logos / knowledge-base files across rebuilds.
+      - storage_data:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    networks:
+      - default
+      - proxy-network
+
+  db:
+    container_name: coaching-bot-backend-db
+    image: postgres:16
+    restart: unless-stopped
+    ports:
+      # Bound to loopback only — never exposed publicly on the host.
+      - "127.0.0.1:5436:5432"
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB:-coaching_bot_pilot}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-coaching_bot_pilot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - default
+
+  qdrant:
+    container_name: coaching-bot-backend-qdrant
+    image: qdrant/qdrant
+    restart: unless-stopped
+    # No host port — internal network only. App reaches it via "qdrant:6333".
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - default
+
+volumes:
+  storage_data:
+  postgres_data:
+  qdrant_data:
+
+networks:
+  default:
+  proxy-network:
+    external: true

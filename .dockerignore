@@ -1,0 +1,50 @@
+# Dependencies are installed fresh inside the image
+node_modules
+
+# Build output (rebuilt in-image)
+dist
+generated
+
+# Local environment & secrets — injected by docker-compose at runtime
+.env
+.env.*
+!.env.example
+
+# Version control / CI
+.git
+.gitignore
+.github
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Test & coverage artefacts
+coverage
+.nyc_output
+test
+*.test.ts
+*.spec.ts
+
+# Logs
+*.log
+npm-debug.log*
+
+# Storage is persisted via a named volume, not baked into the image
+storage
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Docs that don't need to ship with the image
+README.md
+PROGRESS.md
+CLAUDE.md
+
+# Scratch files
+test-doc.txt
+scripts

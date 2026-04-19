@@ -197,17 +197,24 @@ Phase 3: Core API Hardening ⏳
   [ ] GET /knowledge/stats endpoint (Qdrant vector count)
   [ ] Consistent { data, error, message } on ALL responses including errors
 
-Phase 4: Docker & Deployment ⏳
-  [ ] Dockerfile (multi-stage: build → production)
-  [ ] docker-compose.yml:
-        app: port 3006:3000
-        db: port 127.0.0.1:5436:5432
+Phase 4: Docker & Deployment 🚀
+  [x] Dockerfile (multi-stage: deps → build → production; full node_modules
+      copied from deps, never production-only install — protects Prisma engines)
+  [x] docker-compose.yml:
+        app: port 3006:3000 (volume storage_data:/app/storage for uploads)
+        db: port 127.0.0.1:5436:5432 (healthcheck via pg_isready)
         qdrant: internal only (no host port)
-  [ ] .dockerignore
-  [ ] deploy.sh created
+        networks: default + external proxy-network (for NPM)
+  [x] .dockerignore
+  [x] deploy.sh created (git pull → build → db+qdrant up → migrate deploy →
+      app up → /health probe → docker image prune)
+  [x] GitHub Action: .github/workflows/deploy-backend.yml (push to main →
+      SSH → deploy.sh; supports --no-cache via workflow_dispatch)
   [ ] Local Docker test: docker compose up -d --build
-  [ ] GitHub Action: .github/workflows/deploy.yml
-  [ ] SSH to server: /opt/coaching-bot-backend/
+  [ ] SSH to server: /opt/coaching-bot-backend/ (clone repo, copy .env,
+      chmod +x deploy.sh, first manual deploy)
+  [ ] GitHub Secrets: HETZNER_HOST, HETZNER_SSH_KEY, HETZNER_USER (optional),
+      HETZNER_SSH_PORT (optional)
   [ ] NPM: coaching-api.dividendenquelle.de → coaching-bot-backend-app:3000
   [ ] SSL via Let's Encrypt (NPM)
   [ ] PORTS.md: port 3006 / 5436 confirmed

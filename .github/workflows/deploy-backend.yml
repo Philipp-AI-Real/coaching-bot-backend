@@ -1,0 +1,38 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      no_cache:
+        description: "Pass --no-cache to deploy.sh"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: SSH in and run deploy.sh
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: ${{ secrets.HETZNER_USER || 'root' }}
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          port: ${{ secrets.HETZNER_SSH_PORT || 22 }}
+          command_timeout: 20m
+          script: |
+            set -e
+            cd /opt/coaching-bot-backend
+            if [ "${{ inputs.no_cache }}" = "true" ]; then
+              bash deploy.sh --no-cache
+            else
+              bash deploy.sh
+            fi

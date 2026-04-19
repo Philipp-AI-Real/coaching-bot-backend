@@ -8,7 +8,7 @@
 //   - After every change: update version + date below, notify frontend
 //   - Never break existing response shapes without coordinating with frontend
 //
-// Last updated: 2026-04-16 | Version: 1.8.0
+// Last updated: 2026-04-17 | Version: 1.9.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -45,6 +45,39 @@ export interface LoginData {
 
 // POST /auth/login  → ApiResponse<LoginData>
 // GET  /auth/me     → ApiResponse<AuthUser>
+
+
+// ─── Profile ─────────────────────────────────────────────────────────────────
+// GET   /auth/profile          – current user with profile fields
+// PATCH /auth/profile          – update defaultLanguage / soundEnabled
+// POST  /auth/profile/avatar   – upload avatar (multipart, field "avatar")
+// POST  /auth/profile/logo     – upload logo   (multipart, field "logo")
+//
+// Image constraints:
+//   avatar: image/jpeg, image/png, image/webp — max 5 MB
+//   logo:   image/jpeg, image/png, image/webp, image/svg+xml — max 5 MB
+// avatarUrl / logoUrl are relative paths (e.g. "storage/avatars/1-avatar.png").
+// Prepend FILES_PUBLIC_BASE_URL to render.
+
+export interface UserProfile {
+  id: number
+  username: string
+  role: string
+  avatarUrl: string | null
+  logoUrl: string | null
+  defaultLanguage: 'en' | 'de'
+  soundEnabled: boolean
+}
+
+export interface UpdateProfileRequest {
+  defaultLanguage?: 'en' | 'de'
+  soundEnabled?: boolean
+}
+
+// POST /auth/profile/avatar  → ApiResponse<ProfileAvatarResponse>
+// POST /auth/profile/logo    → ApiResponse<ProfileAvatarResponse>
+// Both endpoints return the fully updated profile.
+export type ProfileAvatarResponse = UserProfile
 
 
 // ─── Health ───────────────────────────────────────────────────────────────────
@@ -170,6 +203,18 @@ export interface SynthesizeRequest {
 
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
+// 1.9.0 – 2026-04-17  Auth: added user profile fields (avatarUrl, logoUrl,
+//                     defaultLanguage, soundEnabled) via DB migration
+//                     add_user_profile_fields.
+//                     New endpoints:
+//                       GET   /auth/profile           → ApiResponse<UserProfile>
+//                       PATCH /auth/profile           → ApiResponse<UserProfile>
+//                       POST  /auth/profile/avatar    → ApiResponse<ProfileAvatarResponse>
+//                       POST  /auth/profile/logo      → ApiResponse<ProfileAvatarResponse>
+//                     New types: UserProfile, UpdateProfileRequest,
+//                     ProfileAvatarResponse.
+//                     AuthUser (id/username/role) is unchanged — still what
+//                     POST /auth/login and GET /auth/me return.
 // 1.8.0 – 2026-04-16  Internal: embeddings swapped Gemini → OpenAI
 //                     (text-embedding-3-small, 1536 dims). Stack is now fully
 //                     OpenAI; @google/genai removed. Qdrant collection is
