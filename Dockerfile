@@ -16,7 +16,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 
-RUN npm ci
+RUN npm install
 # prisma generate runs via postinstall on Prisma 5+, but run explicitly so
 # the Linux engine is present in node_modules/.prisma before it is copied
 # to the production image.
