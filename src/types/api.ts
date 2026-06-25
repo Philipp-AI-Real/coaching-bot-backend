@@ -8,7 +8,7 @@
 //   - After every change: update version + date below, notify frontend
 //   - Never break existing response shapes without coordinating with frontend
 //
-// Last updated: 2026-04-17 | Version: 1.9.0
+// Last updated: 2026-06-24 | Version: 1.10.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -203,6 +203,19 @@ export interface SynthesizeRequest {
 
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
+// 1.10.0 – 2026-06-24 Privacy fix: chat history is now private per user.
+//                     GET /chat/history returns ONLY the authenticated user's
+//                     own messages; POST /chat/ask stores messages owned by the
+//                     authenticated user. Previously every user could read all
+//                     users' messages.
+//                     No request/response SHAPE changes — ChatMessage,
+//                     ChatHistoryData, ChatAskRequest and ChatAskData are
+//                     unchanged. Behaviour change only: clients will now see a
+//                     smaller, user-scoped history. The JWT already sent on
+//                     /chat requests now determines ownership — no new fields.
+//                     DB migration add_user_id_to_chat_messages adds a required
+//                     chat_messages.userId (FK → users). Pilot stage: existing
+//                     chat history was discarded by the migration.
 // 1.9.0 – 2026-04-17  Auth: added user profile fields (avatarUrl, logoUrl,
 //                     defaultLanguage, soundEnabled) via DB migration
 //                     add_user_profile_fields.

@@ -23,7 +23,7 @@ export class ChatService {
     private readonly config: ConfigService,
   ) {}
 
-  async ask(dto: AskChatDto) {
+  async ask(userId: number, dto: AskChatDto) {
     const message = dto.message?.trim();
     if (!message) {
       throw new BadRequestException('Message is required');
@@ -70,12 +70,13 @@ export class ChatService {
       throw new ServiceUnavailableException(`Coach reply failed: ${err}`);
     }
 
+    // Both messages are stored as belonging to the requesting user.
     await this.prisma.$transaction([
       this.prisma.chatMessage.create({
-        data: { role: 'user', content: message },
+        data: { userId, role: 'user', content: message },
       }),
       this.prisma.chatMessage.create({
-        data: { role: 'assistant', content: reply },
+        data: { userId, role: 'assistant', content: reply },
       }),
     ]);
 
@@ -110,13 +111,15 @@ export class ChatService {
 ${contextBlock}`;
   }
 
-  async getHistory(page = 1, limit = 20) {
+  async getHistory(userId: number, page = 1, limit = 20) {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(100, Math.max(1, limit));
     const skip = (safePage - 1) * safeLimit;
 
+    // Only the requesting user's own messages are ever returned.
     const [items, total] = await Promise.all([
       this.prisma.chatMessage.findMany({
+        where: { userId },
         orderBy: { createdAt: 'desc' },
         skip,
         take: safeLimit,
@@ -127,7 +130,7 @@ ${contextBlock}`;
           createdAt: true,
         },
       }),
-      this.prisma.chatMessage.count(),
+      this.prisma.chatMessage.count({ where: { userId } }),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(total / safeLimit));

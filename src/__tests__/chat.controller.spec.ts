@@ -5,6 +5,9 @@ import { ChatController } from '../chat/chat.controller';
 import { ChatService } from '../chat/chat.service';
 import { AskChatDto } from '../chat/dto/ask-chat.dto';
 import { ChatHistoryQueryDto } from '../chat/dto/chat-history-query.dto';
+import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
+
+const currentUser: AuthenticatedUser = { id: 7, username: 'coach', role: 'user' };
 
 // ─── mock service ─────────────────────────────────────────────────────────────
 const mockChatService = {
@@ -29,21 +32,21 @@ describe('ChatController', () => {
 
   // ─── ask ────────────────────────────────────────────────────────────────────
   describe('ask (POST /chat/ask)', () => {
-    it('should delegate to service and return the reply', async () => {
+    it('should delegate to service with the current user id and return the reply', async () => {
       const dto: AskChatDto = { message: 'How can I stay motivated?' };
       mockChatService.ask.mockResolvedValue({ reply: 'Stay consistent!' });
 
-      const result = await controller.ask(dto);
+      const result = await controller.ask(currentUser, dto);
 
       expect(result).toEqual({ reply: 'Stay consistent!' });
-      expect(mockChatService.ask).toHaveBeenCalledWith(dto);
+      expect(mockChatService.ask).toHaveBeenCalledWith(currentUser.id, dto);
     });
 
     it('should propagate BadRequestException for an empty message', async () => {
       const dto: AskChatDto = { message: '' };
       mockChatService.ask.mockRejectedValue(new BadRequestException('Message is required'));
 
-      await expect(controller.ask(dto)).rejects.toThrow(BadRequestException);
+      await expect(controller.ask(currentUser, dto)).rejects.toThrow(BadRequestException);
     });
 
     it('should propagate ServiceUnavailableException when RAG pipeline fails', async () => {
@@ -52,7 +55,7 @@ describe('ChatController', () => {
         new ServiceUnavailableException('Retrieval failed'),
       );
 
-      await expect(controller.ask(dto)).rejects.toThrow(ServiceUnavailableException);
+      await expect(controller.ask(currentUser, dto)).rejects.toThrow(ServiceUnavailableException);
     });
   });
 
@@ -66,23 +69,23 @@ describe('ChatController', () => {
       totalPages: 1,
     };
 
-    it('should delegate to service with page and limit from query', async () => {
+    it('should delegate to service with the current user id, page and limit from query', async () => {
       mockChatService.getHistory.mockResolvedValue(historyResponse);
       const query = { page: 2, limit: 10 } as ChatHistoryQueryDto;
 
-      const result = await controller.history(query);
+      const result = await controller.history(currentUser, query);
 
       expect(result).toEqual(historyResponse);
-      expect(mockChatService.getHistory).toHaveBeenCalledWith(2, 10);
+      expect(mockChatService.getHistory).toHaveBeenCalledWith(currentUser.id, 2, 10);
     });
 
     it('should pass undefined page/limit when query has no values (service defaults apply)', async () => {
       mockChatService.getHistory.mockResolvedValue(historyResponse);
       const query = {} as ChatHistoryQueryDto;
 
-      await controller.history(query);
+      await controller.history(currentUser, query);
 
-      expect(mockChatService.getHistory).toHaveBeenCalledWith(undefined, undefined);
+      expect(mockChatService.getHistory).toHaveBeenCalledWith(currentUser.id, undefined, undefined);
     });
 
     it('should return paginated history shape from service', async () => {
@@ -95,7 +98,10 @@ describe('ChatController', () => {
       };
       mockChatService.getHistory.mockResolvedValue(response);
 
-      const result = await controller.history({ page: 1, limit: 20 } as ChatHistoryQueryDto);
+      const result = await controller.history(currentUser, {
+        page: 1,
+        limit: 20,
+      } as ChatHistoryQueryDto);
 
       expect(result.items).toHaveLength(1);
       expect(result.totalPages).toBe(1);

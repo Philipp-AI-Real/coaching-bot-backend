@@ -19,15 +19,21 @@ model User {
   soundEnabled    Boolean  @default(true)
   createdAt       DateTime @default(now())
 
+  chatMessages ChatMessage[]
+
   @@map("users")
 }
 
 model ChatMessage {
   id        Int      @id @default(autoincrement())
+  userId    Int // owner of the message — chat history is private per user
   role      String
   content   String   @db.Text
   createdAt DateTime @default(now())
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
   @@map("chat_messages")
 }
 

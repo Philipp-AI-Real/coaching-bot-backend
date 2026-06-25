@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { ChatService } from './chat.service';
 import { AskChatDto } from './dto/ask-chat.dto';
@@ -19,8 +21,8 @@ export class ChatController {
     summary:
       'Ask the coach: retrieve knowledge from Qdrant (RAG) and generate a Gemini reply; stores user + assistant messages',
   })
-  ask(@Body() dto: AskChatDto) {
-    return this.chat.ask(dto);
+  ask(@CurrentUser() user: AuthenticatedUser, @Body() dto: AskChatDto) {
+    return this.chat.ask(user.id, dto);
   }
 
   @Get('history')
@@ -28,7 +30,10 @@ export class ChatController {
   @ApiOperation({
     summary: 'Paginated chat history (newest first)',
   })
-  history(@Query() query: ChatHistoryQueryDto) {
-    return this.chat.getHistory(query.page, query.limit);
+  history(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ChatHistoryQueryDto,
+  ) {
+    return this.chat.getHistory(user.id, query.page, query.limit);
   }
 }

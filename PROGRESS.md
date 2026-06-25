@@ -2,6 +2,44 @@
 
 ---
 
+## Hotfix: Per-user chat history isolation – 2026-06-24 ✅
+
+### Problem
+Critical privacy bug: `chat_messages` had no owner column, and `ChatService.getHistory`
+queried all rows globally. Every logged-in user could read every other user's chat
+history. Messages were also written without an owner.
+
+### Built / Changed
+- `ChatMessage` model: added required `userId` (FK → `users`, `onDelete: Cascade`) + index.
+- `ChatService.ask(userId, dto)` – now stores both user + assistant messages with `userId`.
+- `ChatService.getHistory(userId, page, limit)` – filters `findMany` and `count` by `userId`.
+- `ChatController` – injects `@CurrentUser()` and passes `user.id` into both endpoints.
+  HTTP request/response shapes are unchanged; ownership comes from the existing JWT.
+
+### DB Schema Changes
+- `2026-06-24` migration `20260624120000_add_user_id_to_chat_messages`
+  - Pilot stage: `DELETE FROM chat_messages` first (no owner to backfill), then add
+    required `userId` column + index + FK to `users`.
+
+### API Contract Changes (api.ts)
+- `2026-06-24 v1.10.0` – Privacy fix: `GET /chat/history` now returns only the
+  authenticated user's own messages; `POST /chat/ask` stores messages owned by the
+  caller. No request/response shape changes (behaviour change only). Frontend notified: pending.
+
+### Tests
+- `chat.service.spec.ts` – updated all `ask`/`getHistory` calls to pass `userId`; added
+  tests asserting messages are persisted with `userId`, history queries are scoped by
+  `userId`, and two users get fully isolated histories.
+- `chat.controller.spec.ts` – updated to pass a mock `CurrentUser`; asserts `user.id` is
+  forwarded to the service.
+- Full suite green: 72/72 passing. `nest build` clean.
+
+### Open TODOs
+- [ ] Notify frontend to sync `api.ts` v1.10.0 (no code change needed on their side).
+- [ ] Run `prisma migrate deploy` on the server (will discard existing pilot chat history).
+
+---
+
 ## Phase 1: Get Backend Running Locally – 2026-04-13 ✅
 
 ### Built
