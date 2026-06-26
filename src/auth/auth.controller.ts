@@ -42,7 +42,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Returns accessToken and user info' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.username, dto.password);
+    return this.auth.login(dto.username, dto.password, dto.tenantSlug);
   }
 
   @Get('me')

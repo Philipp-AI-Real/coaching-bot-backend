@@ -84,10 +84,18 @@ export class QdrantService implements OnModuleInit {
     return typeof first?.size === 'number' ? first.size : undefined;
   }
 
-  async deleteByKnowledgeBaseId(knowledgeBaseId: number): Promise<void> {
+  async deleteByKnowledgeBaseId(
+    knowledgeBaseId: number,
+    tenantId: number,
+  ): Promise<void> {
+    // Scope the delete by tenant as well — never touch another tenant's points.
     await this.client.delete(this.collection, {
       filter: {
         must: [
+          {
+            key: 'tenantId',
+            match: { value: tenantId },
+          },
           {
             key: 'knowledgeBaseId',
             match: { value: knowledgeBaseId },
@@ -100,6 +108,7 @@ export class QdrantService implements OnModuleInit {
   async searchKnowledge(
     vector: number[],
     limit: number,
+    tenantId: number,
   ): Promise<
     Array<{
       score: number;
@@ -112,6 +121,15 @@ export class QdrantService implements OnModuleInit {
       vector,
       limit,
       with_payload: true,
+      // Only ever return vectors belonging to this tenant.
+      filter: {
+        must: [
+          {
+            key: 'tenantId',
+            match: { value: tenantId },
+          },
+        ],
+      },
     });
 
     return res.map((hit) => {

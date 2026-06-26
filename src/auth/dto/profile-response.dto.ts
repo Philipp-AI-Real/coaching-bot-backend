@@ -4,10 +4,13 @@ export class ProfileResponseDto {
   @ApiProperty()
   id: number;
 
+  @ApiProperty({ description: 'Owning tenant id' })
+  tenantId: number;
+
   @ApiProperty()
   username: string;
 
-  @ApiProperty({ enum: ['admin', 'user'] })
+  @ApiProperty({ enum: ['superadmin', 'tenant_admin', 'user'] })
   role: string;
 
   @ApiPropertyOptional({

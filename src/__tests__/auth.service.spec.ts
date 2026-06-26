@@ -41,6 +41,7 @@ vi.mock('bcrypt', () => ({
 // ─── helpers ────────────────────────────────────────────────────────────────
 const makeUser = (overrides: Partial<Record<string, unknown>> = {}) => ({
   id: 1,
+  tenantId: 1,
   username: 'alice',
   passwordHash: '$2b$12$hash',
   role: 'user',
@@ -51,6 +52,17 @@ const makeUser = (overrides: Partial<Record<string, unknown>> = {}) => ({
   createdAt: new Date('2026-04-17T10:00:00.000Z'),
   ...overrides,
 });
+
+const defaultTenant = {
+  id: 1,
+  slug: 'default',
+  name: 'Default Tenant',
+  logoUrl: null,
+  primaryColor: null,
+  features: {},
+  createdAt: new Date('2026-04-17T10:00:00.000Z'),
+  updatedAt: new Date('2026-04-17T10:00:00.000Z'),
+};
 
 const makeImageFile = (
   overrides: Partial<Express.Multer.File> = {},
@@ -73,6 +85,9 @@ const mockPrisma = {
   user: {
     findUnique: vi.fn(),
     update: vi.fn(),
+  },
+  tenant: {
+    findUnique: vi.fn(),
   },
 };
 
@@ -105,17 +120,72 @@ describe('AuthService', () => {
 
   // ─── login ────────────────────────────────────────────────────────────────
   describe('login', () => {
-    it('should return accessToken and user info on valid credentials', async () => {
+    it('should resolve the tenant by slug and look the user up via the composite unique', async () => {
+      mockPrisma.tenant.findUnique.mockResolvedValue(defaultTenant);
+      mockPrisma.user.findUnique.mockResolvedValue(makeUser());
+      mockBcryptCompare.mockResolvedValue(true);
+
+      await service.login('alice', 'pw');
+
+      expect(mockPrisma.tenant.findUnique).toHaveBeenCalledWith({
+        where: { slug: 'default' },
+      });
+      expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+        where: { tenantId_username: { tenantId: 1, username: 'alice' } },
+      });
+    });
+
+    it('should return accessToken and tenant-aware user info on valid credentials', async () => {
+      mockPrisma.tenant.findUnique.mockResolvedValue(defaultTenant);
       mockPrisma.user.findUnique.mockResolvedValue(makeUser());
       mockBcryptCompare.mockResolvedValue(true);
 
       const result = await service.login('alice', 'pw');
 
       expect(result.accessToken).toBe('signed.jwt.token');
-      expect(result.user).toEqual({ id: 1, username: 'alice', role: 'user' });
+      expect(result.user).toEqual({
+        id: 1,
+        username: 'alice',
+        role: 'user',
+        tenantId: 1,
+      });
+      // The signed JWT payload must carry tenantId.
+      expect(mockJwt.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: 1, tenantId: 1 }),
+      );
+    });
+
+    it('should resolve a non-default tenant when tenantSlug is provided', async () => {
+      const acme = { ...defaultTenant, id: 2, slug: 'acme', name: 'Acme' };
+      mockPrisma.tenant.findUnique.mockResolvedValue(acme);
+      mockPrisma.user.findUnique.mockResolvedValue(
+        makeUser({ id: 5, tenantId: 2, username: 'coach' }),
+      );
+      mockBcryptCompare.mockResolvedValue(true);
+
+      const result = await service.login('coach', 'pw', 'acme');
+
+      expect(mockPrisma.tenant.findUnique).toHaveBeenCalledWith({
+        where: { slug: 'acme' },
+      });
+      expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+        where: { tenantId_username: { tenantId: 2, username: 'coach' } },
+      });
+      expect(result.user.tenantId).toBe(2);
+    });
+
+    it('should throw UnauthorizedException when the tenant slug is unknown', async () => {
+      mockPrisma.tenant.findUnique.mockResolvedValue(null);
+
+      await expect(service.login('alice', 'pw', 'ghost-tenant')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      // Must not attempt a user lookup if the tenant does not exist.
+      expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
     });
 
     it('should throw UnauthorizedException when user is not found', async () => {
+      mockPrisma.tenant.findUnique.mockResolvedValue(defaultTenant);
       mockPrisma.user.findUnique.mockResolvedValue(null);
       mockBcryptCompare.mockResolvedValue(false);
 
@@ -125,6 +195,7 @@ describe('AuthService', () => {
     });
 
     it('should throw UnauthorizedException when password does not match', async () => {
+      mockPrisma.tenant.findUnique.mockResolvedValue(defaultTenant);
       mockPrisma.user.findUnique.mockResolvedValue(makeUser());
       mockBcryptCompare.mockResolvedValue(false);
 
@@ -145,6 +216,7 @@ describe('AuthService', () => {
 
       expect(result).toEqual({
         id: 1,
+        tenantId: 1,
         username: 'alice',
         role: 'user',
         avatarUrl: 'storage/avatars/1-avatar.png',

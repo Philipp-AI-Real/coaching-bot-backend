@@ -43,8 +43,11 @@ const makeFile = (overrides: Partial<Express.Multer.File> = {}): Express.Multer.
   ...overrides,
 });
 
+const TENANT_ID = 1;
+
 const makeDoc = (overrides = {}) => ({
   id: 1,
+  tenantId: TENANT_ID,
   title: 'Test Doc',
   originalFilename: 'test.txt',
   mimeType: 'text/plain',
@@ -60,7 +63,7 @@ const mockPrisma = {
   knowledgeBaseDocument: {
     create: vi.fn(),
     findMany: vi.fn(),
-    findUnique: vi.fn(),
+    findFirst: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
   },
@@ -124,10 +127,15 @@ describe('KnowledgeBaseService', () => {
 
   // ─── createFromUpload ───────────────────────────────────────────────────────
   describe('createFromUpload', () => {
-    it('should upload a .txt file, persist metadata, and return the response DTO', async () => {
-      const result = await service.createFromUpload(makeFile(), 'Test Doc');
+    it('should upload a .txt file, persist metadata with tenantId, and return the response DTO', async () => {
+      const result = await service.createFromUpload(makeFile(), TENANT_ID, 'Test Doc');
 
       expect(mockPrisma.knowledgeBaseDocument.create).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.knowledgeBaseDocument.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ tenantId: TENANT_ID }),
+        }),
+      );
       expect(mockEmbedding.embedTexts).toHaveBeenCalledTimes(1);
       expect(mockQdrant.client.upsert).toHaveBeenCalledTimes(1);
       expect(mockPrisma.knowledgeBaseDocument.update).toHaveBeenCalledWith({
@@ -142,15 +150,16 @@ describe('KnowledgeBaseService', () => {
     });
 
     it('should throw BadRequestException when no file is provided', async () => {
-      await expect(service.createFromUpload(undefined, 'title')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.createFromUpload(undefined, TENANT_ID, 'title'),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException for an unsupported file extension', async () => {
       await expect(
         service.createFromUpload(
           makeFile({ originalname: 'document.docx', buffer: Buffer.from('data') }),
+          TENANT_ID,
           undefined,
         ),
       ).rejects.toThrow(BadRequestException);
@@ -158,24 +167,28 @@ describe('KnowledgeBaseService', () => {
 
     it('should throw BadRequestException when extracted text is empty (whitespace only)', async () => {
       await expect(
-        service.createFromUpload(makeFile({ buffer: Buffer.from('   \n\n  ') }), undefined),
+        service.createFromUpload(
+          makeFile({ buffer: Buffer.from('   \n\n  ') }),
+          TENANT_ID,
+          undefined,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('should clean up the DB record and file when Qdrant ingest fails', async () => {
       mockEmbedding.embedTexts.mockRejectedValue(new Error('Embedding service down'));
 
-      await expect(service.createFromUpload(makeFile(), undefined)).rejects.toThrow(
-        'Embedding service down',
-      );
+      await expect(
+        service.createFromUpload(makeFile(), TENANT_ID, undefined),
+      ).rejects.toThrow('Embedding service down');
 
       expect(mockPrisma.knowledgeBaseDocument.delete).toHaveBeenCalledWith({
         where: { id: 1 },
       });
     });
 
-    it('should call Qdrant upsert with 1536-dim vectors matching the collection', async () => {
-      await service.createFromUpload(makeFile(), 'Test');
+    it('should call Qdrant upsert with 1536-dim vectors carrying the tenantId payload', async () => {
+      await service.createFromUpload(makeFile(), TENANT_ID, 'Test');
 
       expect(mockQdrant.client.upsert).toHaveBeenCalledTimes(1);
       const [collection, args] = mockQdrant.client.upsert.mock.calls[0];
@@ -183,6 +196,7 @@ describe('KnowledgeBaseService', () => {
       expect(args.points).toHaveLength(1);
       expect(args.points[0].vector).toHaveLength(VECTOR_DIM);
       expect(args.points[0].payload).toMatchObject({
+        tenantId: TENANT_ID,
         knowledgeBaseId: 1,
         chunkIndex: 0,
       });
@@ -191,30 +205,33 @@ describe('KnowledgeBaseService', () => {
     it('should refuse to upsert when embedding dim does not match the collection', async () => {
       mockEmbedding.embedTexts.mockResolvedValue([makeVector(768)]);
 
-      await expect(service.createFromUpload(makeFile(), undefined)).rejects.toThrow(
-        /Embedding dimension mismatch.*1536.*768/,
-      );
+      await expect(
+        service.createFromUpload(makeFile(), TENANT_ID, undefined),
+      ).rejects.toThrow(/Embedding dimension mismatch.*1536.*768/);
       expect(mockQdrant.client.upsert).not.toHaveBeenCalled();
     });
   });
 
   // ─── findAll ────────────────────────────────────────────────────────────────
   describe('findAll', () => {
-    it('should return an array of response DTOs ordered by id desc', async () => {
+    it('should return an array of response DTOs ordered by id desc, scoped by tenant', async () => {
       const rows = [makeDoc({ id: 2 }), makeDoc({ id: 1 })];
       mockPrisma.knowledgeBaseDocument.findMany.mockResolvedValue(rows);
 
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
 
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe(2);
       expect(result[1].id).toBe(1);
+      expect(mockPrisma.knowledgeBaseDocument.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: TENANT_ID } }),
+      );
     });
 
     it('should return an empty array when no documents exist', async () => {
       mockPrisma.knowledgeBaseDocument.findMany.mockResolvedValue([]);
 
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
 
       expect(result).toEqual([]);
     });
@@ -222,41 +239,56 @@ describe('KnowledgeBaseService', () => {
 
   // ─── findOne ────────────────────────────────────────────────────────────────
   describe('findOne', () => {
-    it('should return the response DTO for an existing document', async () => {
-      mockPrisma.knowledgeBaseDocument.findUnique.mockResolvedValue(makeDoc({ id: 5 }));
+    it('should return the response DTO for an existing document in the tenant', async () => {
+      mockPrisma.knowledgeBaseDocument.findFirst.mockResolvedValue(makeDoc({ id: 5 }));
 
-      const result = await service.findOne(5);
+      const result = await service.findOne(5, TENANT_ID);
 
       expect(result.id).toBe(5);
-      expect(mockPrisma.knowledgeBaseDocument.findUnique).toHaveBeenCalledWith({
-        where: { id: 5 },
+      expect(mockPrisma.knowledgeBaseDocument.findFirst).toHaveBeenCalledWith({
+        where: { id: 5, tenantId: TENANT_ID },
       });
     });
 
     it('should throw NotFoundException when the document does not exist', async () => {
-      mockPrisma.knowledgeBaseDocument.findUnique.mockResolvedValue(null);
+      mockPrisma.knowledgeBaseDocument.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne(99)).rejects.toThrow(NotFoundException);
+      await expect(service.findOne(99, TENANT_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException for a document that belongs to another tenant', async () => {
+      // The doc exists (id 5) but not for TENANT_ID, so the tenant-scoped
+      // findFirst returns null → 404 (no cross-tenant leak).
+      mockPrisma.knowledgeBaseDocument.findFirst.mockResolvedValue(null);
+
+      await expect(service.findOne(5, 999)).rejects.toThrow(NotFoundException);
+      expect(mockPrisma.knowledgeBaseDocument.findFirst).toHaveBeenCalledWith({
+        where: { id: 5, tenantId: 999 },
+      });
     });
   });
 
   // ─── remove ─────────────────────────────────────────────────────────────────
   describe('remove', () => {
-    it('should delete Qdrant vectors, local file, and DB record', async () => {
-      mockPrisma.knowledgeBaseDocument.findUnique.mockResolvedValue(makeDoc({ id: 3 }));
+    it('should delete Qdrant vectors (tenant-scoped), local file, and DB record', async () => {
+      mockPrisma.knowledgeBaseDocument.findFirst.mockResolvedValue(makeDoc({ id: 3 }));
 
-      await service.remove(3);
+      await service.remove(3, TENANT_ID);
 
-      expect(mockQdrant.deleteByKnowledgeBaseId).toHaveBeenCalledWith(3);
+      expect(mockPrisma.knowledgeBaseDocument.findFirst).toHaveBeenCalledWith({
+        where: { id: 3, tenantId: TENANT_ID },
+      });
+      expect(mockQdrant.deleteByKnowledgeBaseId).toHaveBeenCalledWith(3, TENANT_ID);
       expect(mockPrisma.knowledgeBaseDocument.delete).toHaveBeenCalledWith({
         where: { id: 3 },
       });
     });
 
-    it('should throw NotFoundException when the document does not exist', async () => {
-      mockPrisma.knowledgeBaseDocument.findUnique.mockResolvedValue(null);
+    it('should throw NotFoundException when the document does not exist in the tenant', async () => {
+      mockPrisma.knowledgeBaseDocument.findFirst.mockResolvedValue(null);
 
-      await expect(service.remove(99)).rejects.toThrow(NotFoundException);
+      await expect(service.remove(99, TENANT_ID)).rejects.toThrow(NotFoundException);
+      expect(mockQdrant.deleteByKnowledgeBaseId).not.toHaveBeenCalled();
     });
   });
 });

@@ -29,14 +29,22 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // CORS: allow frontend origins (dev + production)
-  const allowedOrigins = [
-    'http://localhost:3007',
-    'https://coaching.dividendenquelle.de',
-  ];
-  if (process.env.FRONTEND_URL) {
-    allowedOrigins.push(process.env.FRONTEND_URL);
-  }
+  // CORS: dynamic allow-list so onboarding a new tenant domain is a config
+  // change (CORS_ALLOWED_ORIGINS) rather than a code change. Always includes the
+  // dev origin and FRONTEND_URL for back-compat.
+  const allowedOrigins = Array.from(
+    new Set(
+      [
+        'http://localhost:3007',
+        'https://coaching.dividendenquelle.de',
+        process.env.FRONTEND_URL,
+        ...(process.env.CORS_ALLOWED_ORIGINS ?? '').split(','),
+      ]
+        .map((o) => o?.trim())
+        .filter((o): o is string => !!o),
+    ),
+  );
+  logger.log(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,

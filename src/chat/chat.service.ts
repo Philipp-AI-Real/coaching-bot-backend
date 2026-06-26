@@ -23,7 +23,7 @@ export class ChatService {
     private readonly config: ConfigService,
   ) {}
 
-  async ask(userId: number, dto: AskChatDto) {
+  async ask(userId: number, tenantId: number, dto: AskChatDto) {
     const message = dto.message?.trim();
     if (!message) {
       throw new BadRequestException('Message is required');
@@ -34,7 +34,8 @@ export class ChatService {
     let hits: Awaited<ReturnType<QdrantService['searchKnowledge']>>;
     try {
       const vector = await this.embedding.embedQuery(message);
-      hits = await this.qdrant.searchKnowledge(vector, topK);
+      // Retrieval is scoped to the caller's tenant.
+      hits = await this.qdrant.searchKnowledge(vector, topK, tenantId);
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
       throw new ServiceUnavailableException(
@@ -70,13 +71,13 @@ export class ChatService {
       throw new ServiceUnavailableException(`Coach reply failed: ${err}`);
     }
 
-    // Both messages are stored as belonging to the requesting user.
+    // Both messages are stored as belonging to the requesting user + tenant.
     await this.prisma.$transaction([
       this.prisma.chatMessage.create({
-        data: { userId, role: 'user', content: message },
+        data: { userId, tenantId, role: 'user', content: message },
       }),
       this.prisma.chatMessage.create({
-        data: { userId, role: 'assistant', content: reply },
+        data: { userId, tenantId, role: 'assistant', content: reply },
       }),
     ]);
 
@@ -111,15 +112,16 @@ export class ChatService {
 ${contextBlock}`;
   }
 
-  async getHistory(userId: number, page = 1, limit = 20) {
+  async getHistory(userId: number, tenantId: number, page = 1, limit = 20) {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(100, Math.max(1, limit));
     const skip = (safePage - 1) * safeLimit;
 
-    // Only the requesting user's own messages are ever returned.
+    // Only the requesting user's own messages, scoped to their tenant.
+    const where = { userId, tenantId };
     const [items, total] = await Promise.all([
       this.prisma.chatMessage.findMany({
-        where: { userId },
+        where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: safeLimit,
@@ -130,7 +132,7 @@ ${contextBlock}`;
           createdAt: true,
         },
       }),
-      this.prisma.chatMessage.count({ where: { userId } }),
+      this.prisma.chatMessage.count({ where }),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(total / safeLimit));

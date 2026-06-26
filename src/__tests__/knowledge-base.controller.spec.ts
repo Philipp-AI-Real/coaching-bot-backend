@@ -3,6 +3,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { KnowledgeBaseController } from '../knowledge-base/knowledge-base.controller';
 import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
+import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
+
+const currentUser: AuthenticatedUser = {
+  id: 7,
+  username: 'coach',
+  role: 'tenant_admin',
+  tenantId: 1,
+};
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const makeFile = (): Express.Multer.File => ({
@@ -33,6 +41,7 @@ const makeDto = (id = 1, chunkCount = 1) => ({
 // ─── mock service ─────────────────────────────────────────────────────────────
 const mockKbService = {
   createFromUpload: vi.fn(),
+  createFromUploadBatch: vi.fn(),
   findAll: vi.fn(),
   findOne: vi.fn(),
   remove: vi.fn(),
@@ -55,15 +64,19 @@ describe('KnowledgeBaseController', () => {
 
   // ─── create ─────────────────────────────────────────────────────────────────
   describe('create (POST /knowledge-base)', () => {
-    it('should delegate to service and return the created document DTO', async () => {
+    it('should delegate to service with the current tenantId and return the created DTO', async () => {
       const dto = makeDto();
       mockKbService.createFromUpload.mockResolvedValue(dto);
       const file = makeFile();
 
-      const result = await controller.create(file, 'Test Doc');
+      const result = await controller.create(currentUser, file, 'Test Doc');
 
       expect(result).toEqual(dto);
-      expect(mockKbService.createFromUpload).toHaveBeenCalledWith(file, 'Test Doc');
+      expect(mockKbService.createFromUpload).toHaveBeenCalledWith(
+        file,
+        currentUser.tenantId,
+        'Test Doc',
+      );
     });
 
     it('should propagate BadRequestException when no file is provided', async () => {
@@ -71,9 +84,9 @@ describe('KnowledgeBaseController', () => {
         new BadRequestException('File is required'),
       );
 
-      await expect(controller.create(undefined as any, undefined)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        controller.create(currentUser, undefined as any, undefined),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should propagate BadRequestException for unsupported file type', async () => {
@@ -81,41 +94,58 @@ describe('KnowledgeBaseController', () => {
         new BadRequestException('Unsupported file extension'),
       );
 
-      await expect(controller.create(makeFile(), undefined)).rejects.toThrow(
-        BadRequestException,
+      await expect(
+        controller.create(currentUser, makeFile(), undefined),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ─── createBatch ──────────────────────────────────────────────────────────────
+  describe('createBatch (POST /knowledge-base/batch)', () => {
+    it('should delegate to service with the current tenantId', async () => {
+      const batchResult = { uploaded: [], failed: [], total: 0, succeeded: 0, failed_count: 0 };
+      mockKbService.createFromUploadBatch.mockResolvedValue(batchResult);
+      const files = [makeFile()];
+
+      const result = await controller.createBatch(currentUser, files);
+
+      expect(result).toEqual(batchResult);
+      expect(mockKbService.createFromUploadBatch).toHaveBeenCalledWith(
+        files,
+        currentUser.tenantId,
       );
     });
   });
 
   // ─── findAll ────────────────────────────────────────────────────────────────
   describe('findAll (GET /knowledge-base)', () => {
-    it('should delegate to service and return the document array', async () => {
+    it('should delegate to service with the current tenantId and return the document array', async () => {
       const docs = [makeDto(2), makeDto(1)];
       mockKbService.findAll.mockResolvedValue(docs);
 
-      const result = await controller.findAll();
+      const result = await controller.findAll(currentUser);
 
       expect(result).toEqual(docs);
-      expect(mockKbService.findAll).toHaveBeenCalledTimes(1);
+      expect(mockKbService.findAll).toHaveBeenCalledWith(currentUser.tenantId);
     });
 
     it('should return an empty array when no documents exist', async () => {
       mockKbService.findAll.mockResolvedValue([]);
 
-      expect(await controller.findAll()).toEqual([]);
+      expect(await controller.findAll(currentUser)).toEqual([]);
     });
   });
 
   // ─── findOne ────────────────────────────────────────────────────────────────
   describe('findOne (GET /knowledge-base/:id)', () => {
-    it('should delegate to service and return the single document DTO', async () => {
+    it('should delegate to service with id and the current tenantId', async () => {
       const dto = makeDto(7);
       mockKbService.findOne.mockResolvedValue(dto);
 
-      const result = await controller.findOne(7);
+      const result = await controller.findOne(currentUser, 7);
 
       expect(result).toEqual(dto);
-      expect(mockKbService.findOne).toHaveBeenCalledWith(7);
+      expect(mockKbService.findOne).toHaveBeenCalledWith(7, currentUser.tenantId);
     });
 
     it('should propagate NotFoundException when document does not exist', async () => {
@@ -123,19 +153,21 @@ describe('KnowledgeBaseController', () => {
         new NotFoundException('Knowledge base 99 not found'),
       );
 
-      await expect(controller.findOne(99)).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne(currentUser, 99)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   // ─── remove ─────────────────────────────────────────────────────────────────
   describe('remove (DELETE /knowledge-base/:id)', () => {
-    it('should call service.remove and return { deletedId }', async () => {
+    it('should call service.remove with id and tenantId and return { deletedId }', async () => {
       mockKbService.remove.mockResolvedValue(undefined);
 
-      const result = await controller.remove(3);
+      const result = await controller.remove(currentUser, 3);
 
       expect(result).toEqual({ deletedId: 3 });
-      expect(mockKbService.remove).toHaveBeenCalledWith(3);
+      expect(mockKbService.remove).toHaveBeenCalledWith(3, currentUser.tenantId);
     });
 
     it('should propagate NotFoundException when document does not exist', async () => {
@@ -143,7 +175,9 @@ describe('KnowledgeBaseController', () => {
         new NotFoundException('Knowledge base 99 not found'),
       );
 
-      await expect(controller.remove(99)).rejects.toThrow(NotFoundException);
+      await expect(controller.remove(currentUser, 99)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

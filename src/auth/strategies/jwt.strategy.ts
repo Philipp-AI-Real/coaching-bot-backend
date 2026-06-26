@@ -21,7 +21,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload): AuthenticatedUser {
-    if (!payload?.sub || !payload?.username) {
+    if (!payload?.sub || !payload?.username || payload?.tenantId == null) {
       throw new UnauthorizedException('Invalid token payload');
     }
 
@@ -29,6 +29,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       id: payload.sub,
       username: payload.username,
       role: payload.role,
+      tenantId: payload.tenantId,
     };
   }
 }

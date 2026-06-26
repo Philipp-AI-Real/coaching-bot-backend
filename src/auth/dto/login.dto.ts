@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({ example: 'admin' })
@@ -13,4 +13,15 @@ export class LoginDto {
   @IsNotEmpty()
   @MaxLength(128)
   password: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Tenant slug the user belongs to. Defaults to "default" when omitted.',
+    example: 'default',
+    default: 'default',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  tenantSlug?: string;
 }

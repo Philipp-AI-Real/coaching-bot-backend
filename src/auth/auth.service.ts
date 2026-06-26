@@ -20,6 +20,13 @@ export interface LoginResult {
   user: AuthenticatedUser;
 }
 
+// Tenant a login defaults to when the client sends no explicit slug.
+const DEFAULT_TENANT_SLUG = 'default';
+
+// Dummy bcrypt hash used for constant-time comparison on the not-found path.
+const INVALID_HASH =
+  '$2b$12$invalidhashtopreventtiming000000000000000000000000';
+
 const AVATAR_MIME_TO_EXT: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/jpg': 'jpg',
@@ -41,12 +48,28 @@ export class AuthService {
     private readonly jwt: JwtService,
   ) {}
 
-  async login(username: string, password: string): Promise<LoginResult> {
-    const user = await this.prisma.user.findUnique({ where: { username } });
+  async login(
+    username: string,
+    password: string,
+    tenantSlug: string = DEFAULT_TENANT_SLUG,
+  ): Promise<LoginResult> {
+    // Resolve the tenant first — username is only unique within a tenant.
+    const slug = tenantSlug?.trim() || DEFAULT_TENANT_SLUG;
+    const tenant = await this.prisma.tenant.findUnique({ where: { slug } });
+
+    if (!tenant) {
+      // Constant-time response to avoid leaking which tenants exist.
+      await bcrypt.compare(password, INVALID_HASH);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { tenantId_username: { tenantId: tenant.id, username } },
+    });
 
     if (!user) {
       // Constant-time response to prevent username enumeration
-      await bcrypt.compare(password, '$2b$12$invalidhashtopreventtiming000000000000000000000000');
+      await bcrypt.compare(password, INVALID_HASH);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -59,15 +82,23 @@ export class AuthService {
       sub: user.id,
       username: user.username,
       role: user.role,
+      tenantId: user.tenantId,
     };
 
     const accessToken = this.jwt.sign(payload);
 
-    this.logger.log(`User "${user.username}" (id=${user.id}) logged in`);
+    this.logger.log(
+      `User "${user.username}" (id=${user.id}, tenant=${slug}) logged in`,
+    );
 
     return {
       accessToken,
-      user: { id: user.id, username: user.username, role: user.role },
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        tenantId: user.tenantId,
+      },
     };
   }
 
@@ -78,7 +109,12 @@ export class AuthService {
       throw new NotFoundException(`User ${userId} not found`);
     }
 
-    return { id: user.id, username: user.username, role: user.role };
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      tenantId: user.tenantId,
+    };
   }
 
   // ─── Profile ─────────────────────────────────────────────────────────────
@@ -179,6 +215,7 @@ export class AuthService {
 
   private toProfile(user: {
     id: number;
+    tenantId: number;
     username: string;
     role: string;
     avatarUrl: string | null;
@@ -188,6 +225,7 @@ export class AuthService {
   }): ProfileResponseDto {
     return {
       id: user.id,
+      tenantId: user.tenantId,
       username: user.username,
       role: user.role,
       avatarUrl: user.avatarUrl,

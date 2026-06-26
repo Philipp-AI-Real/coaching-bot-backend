@@ -7,7 +7,12 @@ import { AskChatDto } from '../chat/dto/ask-chat.dto';
 import { ChatHistoryQueryDto } from '../chat/dto/chat-history-query.dto';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 
-const currentUser: AuthenticatedUser = { id: 7, username: 'coach', role: 'user' };
+const currentUser: AuthenticatedUser = {
+  id: 7,
+  username: 'coach',
+  role: 'user',
+  tenantId: 3,
+};
 
 // ─── mock service ─────────────────────────────────────────────────────────────
 const mockChatService = {
@@ -39,7 +44,11 @@ describe('ChatController', () => {
       const result = await controller.ask(currentUser, dto);
 
       expect(result).toEqual({ reply: 'Stay consistent!' });
-      expect(mockChatService.ask).toHaveBeenCalledWith(currentUser.id, dto);
+      expect(mockChatService.ask).toHaveBeenCalledWith(
+        currentUser.id,
+        currentUser.tenantId,
+        dto,
+      );
     });
 
     it('should propagate BadRequestException for an empty message', async () => {
@@ -76,7 +85,12 @@ describe('ChatController', () => {
       const result = await controller.history(currentUser, query);
 
       expect(result).toEqual(historyResponse);
-      expect(mockChatService.getHistory).toHaveBeenCalledWith(currentUser.id, 2, 10);
+      expect(mockChatService.getHistory).toHaveBeenCalledWith(
+        currentUser.id,
+        currentUser.tenantId,
+        2,
+        10,
+      );
     });
 
     it('should pass undefined page/limit when query has no values (service defaults apply)', async () => {
@@ -85,7 +99,12 @@ describe('ChatController', () => {
 
       await controller.history(currentUser, query);
 
-      expect(mockChatService.getHistory).toHaveBeenCalledWith(currentUser.id, undefined, undefined);
+      expect(mockChatService.getHistory).toHaveBeenCalledWith(
+        currentUser.id,
+        currentUser.tenantId,
+        undefined,
+        undefined,
+      );
     });
 
     it('should return paginated history shape from service', async () => {

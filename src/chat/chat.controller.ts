@@ -22,7 +22,7 @@ export class ChatController {
       'Ask the coach: retrieve knowledge from Qdrant (RAG) and generate a Gemini reply; stores user + assistant messages',
   })
   ask(@CurrentUser() user: AuthenticatedUser, @Body() dto: AskChatDto) {
-    return this.chat.ask(user.id, dto);
+    return this.chat.ask(user.id, user.tenantId, dto);
   }
 
   @Get('history')
@@ -34,6 +34,6 @@ export class ChatController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: ChatHistoryQueryDto,
   ) {
-    return this.chat.getHistory(user.id, query.page, query.limit);
+    return this.chat.getHistory(user.id, user.tenantId, query.page, query.limit);
   }
 }

@@ -138,6 +138,7 @@ export class KnowledgeBaseService {
 
   private async ingestIntoQdrant(
     knowledgeBaseId: number,
+    tenantId: number,
     chunks: string[],
   ): Promise<void> {
     if (!chunks.length) return;
@@ -165,6 +166,7 @@ export class KnowledgeBaseService {
         id: randomUUID(),
         vector: sliceVectors[j],
         payload: {
+          tenantId,
           knowledgeBaseId,
           chunkIndex: i + j,
           text,
@@ -176,6 +178,7 @@ export class KnowledgeBaseService {
 
   async createFromUpload(
     file: Express.Multer.File | undefined,
+    tenantId: number,
     title?: string,
   ): Promise<KnowledgeBaseResponseDto> {
     if (!file?.buffer?.length) {
@@ -221,6 +224,7 @@ export class KnowledgeBaseService {
 
     const created = await this.prisma.knowledgeBaseDocument.create({
       data: {
+        tenantId,
         title: title?.trim() || null,
         originalFilename: file.originalname,
         mimeType: file.mimetype || null,
@@ -230,7 +234,7 @@ export class KnowledgeBaseService {
     });
 
     try {
-      await this.ingestIntoQdrant(created.id, chunks);
+      await this.ingestIntoQdrant(created.id, tenantId, chunks);
       const updated = await this.prisma.knowledgeBaseDocument.update({
         where: { id: created.id },
         data: { chunkCount: chunks.length },
@@ -251,6 +255,7 @@ export class KnowledgeBaseService {
 
   async createFromUploadBatch(
     files: Express.Multer.File[] | undefined,
+    tenantId: number,
   ): Promise<BatchUploadResponseDto> {
     if (!files?.length) {
       throw new BadRequestException('At least one file is required');
@@ -264,11 +269,11 @@ export class KnowledgeBaseService {
     const uploaded: BatchUploadResponseDto['uploaded'] = [];
     const failed: BatchUploadResponseDto['failed'] = [];
 
-    // Sequential processing — avoids overwhelming Qdrant/Gemini.
+    // Sequential processing — avoids overwhelming Qdrant/OpenAI.
     for (const file of files) {
       const filename = file?.originalname ?? 'unknown';
       try {
-        const result = await this.createFromUpload(file);
+        const result = await this.createFromUpload(file, tenantId);
         uploaded.push({
           id: result.id,
           originalFilename: result.originalFilename,
@@ -298,28 +303,31 @@ export class KnowledgeBaseService {
     }
   }
 
-  async findAll(): Promise<KnowledgeBaseResponseDto[]> {
+  async findAll(tenantId: number): Promise<KnowledgeBaseResponseDto[]> {
     const rows = await this.prisma.knowledgeBaseDocument.findMany({
+      where: { tenantId },
       orderBy: { id: 'desc' },
     });
     return rows.map((r) => this.toResponse(r));
   }
 
-  async findOne(id: number): Promise<KnowledgeBaseResponseDto> {
-    const row = await this.prisma.knowledgeBaseDocument.findUnique({
-      where: { id },
+  async findOne(id: number, tenantId: number): Promise<KnowledgeBaseResponseDto> {
+    // findFirst with tenantId so a cross-tenant id returns 404, not another
+    // tenant's document.
+    const row = await this.prisma.knowledgeBaseDocument.findFirst({
+      where: { id, tenantId },
     });
     if (!row) throw new NotFoundException(`Knowledge base ${id} not found`);
     return this.toResponse(row);
   }
 
-  async remove(id: number): Promise<void> {
-    const row = await this.prisma.knowledgeBaseDocument.findUnique({
-      where: { id },
+  async remove(id: number, tenantId: number): Promise<void> {
+    const row = await this.prisma.knowledgeBaseDocument.findFirst({
+      where: { id, tenantId },
     });
     if (!row) throw new NotFoundException(`Knowledge base ${id} not found`);
 
-    await this.qdrant.deleteByKnowledgeBaseId(id);
+    await this.qdrant.deleteByKnowledgeBaseId(id, tenantId);
     const abs = join(this.projectRoot(), row.relativePath);
     await this.safeDeleteFile(abs);
     await this.prisma.knowledgeBaseDocument.delete({ where: { id } });

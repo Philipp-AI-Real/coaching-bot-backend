@@ -245,6 +245,15 @@ Key decisions already made:
 2026-04-13  prisma migrate dev (not migrate deploy) needed for first local setup — migrate deploy only runs existing migrations, migrate dev creates them
 2026-04-13  HttpExceptionFilter was silently swallowing non-HttpException errors — fixed by adding Logger for all 500-level errors
 2026-04-13  Prisma binaryTargets must include "windows" — backend was generated on Mac (darwin-arm64), added ["native", "windows"] to schema.prisma
+2026-06-24  Chat history made private per user — chat_messages.userId added (hotfix v1.10.0)
+2026-06-26  MULTI-TENANT (Phase 1, api.ts v1.11.0): new tenants table; User/ChatMessage/KnowledgeBaseDocument all carry tenantId; full data isolation per tenant
+2026-06-26  Username is unique PER TENANT (@@unique([tenantId, username])) — login resolves the tenant first (LoginDto.tenantSlug, default "default") then looks up via the composite unique; never findFirst by username alone
+2026-06-26  Roles are now superadmin | tenant_admin | user; existing admin migrated to superadmin in the default tenant
+2026-06-26  JWT payload carries tenantId; JwtStrategy rejects tokens without it. On deploy, rotate JWT_SECRET to force re-login (no tokenVersion column)
+2026-06-26  Knowledge base WRITES (POST /knowledge-base, /batch, DELETE /:id) are gated to tenant_admin+superadmin via @Roles + RolesGuard; reads + chat stay open to any tenant user
+2026-06-26  Every Qdrant vector carries a tenantId payload; searchKnowledge + deleteByKnowledgeBaseId require a tenantId filter. Existing vectors discarded (recreate collection on deploy)
+2026-06-26  CORS allow-list is driven by CORS_ALLOWED_ORIGINS (comma-separated env), unioned with FRONTEND_URL + localhost:3007. Per-tenant domain-based CORS is deferred to Phase 4
+2026-06-26  Tenant provisioning is seed-only in Phase 1; superadmin tenant-CRUD endpoints deferred to Phase 2
 Instructions for Claude Code
 ROLE:
   Senior Backend Engineer with expertise in NestJS, TypeScript,
@@ -374,6 +383,10 @@ QDRANT_VECTOR_SIZE="1536"
 # Chunking
 CHUNK_SIZE="800"
 CHUNK_OVERLAP="100"
+
+# CORS — comma-separated allow-list (multi-tenant). Unioned with FRONTEND_URL
+# and localhost:3007. Add each tenant frontend domain here.
+CORS_ALLOWED_ORIGINS="https://coaching.dividendenquelle.de"
 
 # Production only
 NODE_ENV=production

@@ -2,6 +2,77 @@
 
 ---
 
+## Phase: Multi-Tenant Foundation (Phase 1) – 2026-06-26 ✅
+
+### Goal
+Convert the single-tenant backend into a multi-tenant platform with fully isolated
+data per customer organisation (tenant). Every user belongs to exactly one tenant;
+no query may return another tenant's data.
+
+### Built / Changed
+- **Tenant model** (`tenants` table): id, slug (unique), name, logoUrl, primaryColor,
+  features (Json), createdAt, updatedAt.
+- **User**: added `tenantId` (FK → tenants, onDelete Restrict); `username` is now unique
+  PER TENANT (`@@unique([tenantId, username])`); roles are now
+  `superadmin | tenant_admin | user`.
+- **ChatMessage / KnowledgeBaseDocument**: added `tenantId` (FK → tenants, cascade).
+- **Auth/JWT**: JWT payload, `AuthenticatedUser`, `JwtStrategy` all carry `tenantId`
+  (strategy rejects tokens without it). `login(username, password, tenantSlug='default')`
+  resolves the tenant by slug, then looks the user up via the composite unique
+  `tenantId_username` (no ambiguous findFirst). `LoginDto` gained optional `tenantSlug`.
+  `getMe` / profile expose `tenantId`.
+- **RolesGuard + @Roles decorator** (new): knowledge-base WRITES (POST /knowledge-base,
+  POST /knowledge-base/batch, DELETE /knowledge-base/:id) gated to `tenant_admin` +
+  `superadmin` → 403 for plain users. Reads + chat stay open to any tenant user.
+- **Qdrant**: every vector payload carries `tenantId`; `searchKnowledge(vector, limit,
+  tenantId)` and `deleteByKnowledgeBaseId(id, tenantId)` now filter by tenant.
+- **KnowledgeBaseService**: `tenantId` threaded through create/batch/findAll/findOne/remove;
+  `findOne`/`remove` use `findFirst({ id, tenantId })` so cross-tenant ids return 404.
+- **ChatService**: `ask(userId, tenantId, dto)` + `getHistory(userId, tenantId, …)`; both
+  scoped by `{ userId, tenantId }`; retrieval scoped to the caller's tenant.
+- **CORS** (main.ts): dynamic allow-list from `CORS_ALLOWED_ORIGINS` (comma-separated),
+  unioned with FRONTEND_URL + localhost:3007.
+- **Seed**: upserts the default tenant; creates `admin` as `superadmin` in it.
+
+### DB Schema Changes
+- `2026-06-26` migration `20260626120000_add_multi_tenant_foundation`
+  - Create `tenants` + seed default tenant; clean-slate DELETE of chat_messages +
+    knowledge_base_documents; add nullable tenantId → backfill → set NOT NULL; promote
+    admin → superadmin; drop `users_username_key`, add `users_tenantId_username_key`;
+    add tenant indexes + FKs.
+
+### API Contract Changes (api.ts)
+- `2026-06-26 v1.11.0` – LoginRequest.tenantSlug (optional); tenantId on AuthUser +
+  UserProfile; new Tenant type; roles superadmin|tenant_admin|user; KB writes role-gated;
+  CORS_ALLOWED_ORIGINS. BREAKING DEPLOY: rotate JWT_SECRET (force re-login). CLEAN SLATE:
+  chat history, KB docs, Qdrant vectors discarded. Frontend notified: pending.
+
+### Decisions & Findings
+- Seed-only tenant provisioning (CRUD deferred to Phase 2).
+- RolesGuard built now, applied to KB writes only.
+- JWT_SECRET rotation for token invalidation (no tokenVersion column).
+- Tenant resolver at login (tenantSlug) added per developer review — `findFirst` by
+  username alone is ambiguous once usernames are unique only per tenant.
+- Dynamic CORS via env added per developer review — single FRONTEND_URL would break the
+  moment a second tenant domain is added.
+
+### Tests
+- Updated: auth.service, qdrant.service, knowledge-base.service, knowledge-base.controller,
+  chat.service, chat.controller specs (tenant scoping + composite-unique login + 403/404
+  isolation). New: roles.guard.spec. **Full suite green: 85/85. `nest build` clean.**
+
+### Open TODOs (deploy + next phase)
+- [ ] Start Docker, run `npx prisma migrate deploy`, then `npm run seed` (migration +
+  smoke test were NOT run locally — Docker Desktop was down).
+- [ ] Recreate the Qdrant collection on deploy (discard pre-tenant vectors); re-upload KB.
+- [ ] Rotate JWT_SECRET on the server .env so old tokens are invalidated.
+- [ ] Set CORS_ALLOWED_ORIGINS on the server.
+- [ ] Run the two-tenant cross-isolation smoke test (404 cross-tenant, 403 plain-user write).
+- [ ] Notify frontend to sync api.ts v1.11.0 (send tenantSlug on login; expect tenantId).
+- [ ] Phase 2: tenant CRUD endpoints, user management, subdomain/header tenant resolution.
+
+---
+
 ## Hotfix: Per-user chat history isolation – 2026-06-24 ✅
 
 ### Problem

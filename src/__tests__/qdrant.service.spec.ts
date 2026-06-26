@@ -8,6 +8,8 @@ const mockGetCollections = vi.fn();
 const mockGetCollection = vi.fn();
 const mockCreateCollection = vi.fn();
 const mockDeleteCollection = vi.fn();
+const mockSearch = vi.fn();
+const mockDelete = vi.fn();
 
 vi.mock('@qdrant/js-client-rest', () => ({
   QdrantClient: class MockQdrantClient {
@@ -15,6 +17,8 @@ vi.mock('@qdrant/js-client-rest', () => ({
     getCollection = mockGetCollection;
     createCollection = mockCreateCollection;
     deleteCollection = mockDeleteCollection;
+    search = mockSearch;
+    delete = mockDelete;
   },
 }));
 
@@ -112,6 +116,48 @@ describe('QdrantService', () => {
       mockGetCollections.mockResolvedValue({ collections: [] });
       const service = await buildService();
       expect(service.expectedVectorSize).toBe(1536);
+    });
+  });
+
+  describe('searchKnowledge — tenant scoping', () => {
+    it('should send a tenantId filter so only the tenant\'s vectors are searched', async () => {
+      mockGetCollections.mockResolvedValue({ collections: [] });
+      mockSearch.mockResolvedValueOnce([
+        {
+          score: 0.9,
+          payload: { tenantId: 7, knowledgeBaseId: 1, chunkIndex: 0, text: 'hi' },
+        },
+      ]);
+      const service = await buildService();
+
+      const result = await service.searchKnowledge([0.1, 0.2], 5, 7);
+
+      expect(mockSearch).toHaveBeenCalledWith('test_collection', {
+        vector: [0.1, 0.2],
+        limit: 5,
+        with_payload: true,
+        filter: { must: [{ key: 'tenantId', match: { value: 7 } }] },
+      });
+      expect(result[0]).toMatchObject({ knowledgeBaseId: 1, chunkIndex: 0, text: 'hi' });
+    });
+  });
+
+  describe('deleteByKnowledgeBaseId — tenant scoping', () => {
+    it('should filter the delete by both tenantId and knowledgeBaseId', async () => {
+      mockGetCollections.mockResolvedValue({ collections: [] });
+      mockDelete.mockResolvedValueOnce(undefined);
+      const service = await buildService();
+
+      await service.deleteByKnowledgeBaseId(3, 7);
+
+      expect(mockDelete).toHaveBeenCalledWith('test_collection', {
+        filter: {
+          must: [
+            { key: 'tenantId', match: { value: 7 } },
+            { key: 'knowledgeBaseId', match: { value: 3 } },
+          ],
+        },
+      });
     });
   });
 });

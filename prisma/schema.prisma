@@ -8,37 +8,63 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Tenant {
+  id           Int      @id @default(autoincrement())
+  slug         String   @unique // stable identifier, e.g. "default", "bpm360"
+  name         String
+  logoUrl      String? // relative path or URL to tenant logo
+  primaryColor String? // brand color, e.g. "#1a73e8"
+  features     Json     @default("{}") // feature flags object
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users     User[]
+  documents KnowledgeBaseDocument[]
+  messages  ChatMessage[]
+
+  @@map("tenants")
+}
+
 model User {
   id              Int      @id @default(autoincrement())
-  username        String   @unique
+  tenantId        Int // owning tenant — every user belongs to exactly one tenant
+  username        String
   passwordHash    String
-  role            String   @default("user") // "admin" | "user"
+  role            String   @default("user") // "superadmin" | "tenant_admin" | "user"
   avatarUrl       String?  // relative path to uploaded avatar
   logoUrl         String?  // relative path to uploaded logo
   defaultLanguage String   @default("en") // 'en' | 'de'
   soundEnabled    Boolean  @default(true)
   createdAt       DateTime @default(now())
 
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   chatMessages ChatMessage[]
 
+  // Username is unique per tenant, not globally.
+  @@unique([tenantId, username])
+  @@index([tenantId])
   @@map("users")
 }
 
 model ChatMessage {
   id        Int      @id @default(autoincrement())
+  tenantId  Int // owning tenant — defense-in-depth scoping alongside userId
   userId    Int // owner of the message — chat history is private per user
   role      String
   content   String   @db.Text
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([tenantId])
   @@map("chat_messages")
 }
 
 model KnowledgeBaseDocument {
   id               Int      @id @default(autoincrement())
+  tenantId         Int // owning tenant — knowledge base is isolated per tenant
   title            String?
   originalFilename String
   mimeType         String?
@@ -47,5 +73,8 @@ model KnowledgeBaseDocument {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
   @@map("knowledge_base_documents")
 }

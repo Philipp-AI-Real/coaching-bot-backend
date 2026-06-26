@@ -8,7 +8,7 @@
 //   - After every change: update version + date below, notify frontend
 //   - Never break existing response shapes without coordinating with frontend
 //
-// Last updated: 2026-06-24 | Version: 1.10.0
+// Last updated: 2026-06-26 | Version: 1.11.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -30,12 +30,14 @@ export interface ApiResponse<T> {
 export interface LoginRequest {
   username: string
   password: string
+  tenantSlug?: string   // tenant the user belongs to; defaults to "default" server-side
 }
 
 export interface AuthUser {
   id: number
   username: string
-  role: string
+  role: string          // "superadmin" | "tenant_admin" | "user"
+  tenantId: number
 }
 
 export interface LoginData {
@@ -45,6 +47,23 @@ export interface LoginData {
 
 // POST /auth/login  → ApiResponse<LoginData>
 // GET  /auth/me     → ApiResponse<AuthUser>
+
+
+// ─── Tenant ──────────────────────────────────────────────────────────────────
+// A tenant is one customer organisation. Every user belongs to exactly one.
+// Phase 1 has no tenant CRUD endpoints (seed-only provisioning); this type
+// describes the shape used internally and by future white-label config.
+
+export interface Tenant {
+  id: number
+  slug: string                          // stable identifier, e.g. "default", "bpm360"
+  name: string
+  logoUrl: string | null
+  primaryColor: string | null           // brand color, e.g. "#1a73e8"
+  features: Record<string, unknown>     // feature flags object
+  createdAt: string                     // ISO 8601
+  updatedAt: string                     // ISO 8601
+}
 
 
 // ─── Profile ─────────────────────────────────────────────────────────────────
@@ -61,6 +80,7 @@ export interface LoginData {
 
 export interface UserProfile {
   id: number
+  tenantId: number
   username: string
   role: string
   avatarUrl: string | null
@@ -203,6 +223,29 @@ export interface SynthesizeRequest {
 
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
+// 1.11.0 – 2026-06-26 Multi-tenant foundation (Phase 1). Full data isolation
+//                     between customer organisations (tenants).
+//                     - LoginRequest: added optional tenantSlug (defaults to
+//                       "default" server-side). Username is now unique PER
+//                       TENANT, so two tenants may both have user "coach".
+//                     - AuthUser + UserProfile: added tenantId. role values are
+//                       now "superadmin" | "tenant_admin" | "user".
+//                     - New Tenant type (id, slug, name, logoUrl, primaryColor,
+//                       features, timestamps). No tenant CRUD endpoints yet
+//                       (seed-only provisioning; CRUD is Phase 2).
+//                     - Knowledge base WRITE routes (POST /knowledge-base, POST
+//                       /knowledge-base/batch, DELETE /knowledge-base/:id) now
+//                       require role tenant_admin or superadmin → 403 for plain
+//                       users. Reads + chat stay open to any tenant user.
+//                     - All data (chat history, KB docs, Qdrant vectors) is
+//                       scoped by tenantId; cross-tenant access returns 404.
+//                     - CORS allow-list is now driven by CORS_ALLOWED_ORIGINS.
+//                     BREAKING DEPLOY: JWT_SECRET is rotated → all existing
+//                     tokens are invalid, every client must re-login to obtain a
+//                     tenantId-bearing token. CLEAN SLATE: chat history, KB
+//                     documents, and all Qdrant vectors are discarded by the
+//                     migration; re-upload KB after deploy. No field removals
+//                     from existing response shapes.
 // 1.10.0 – 2026-06-24 Privacy fix: chat history is now private per user.
 //                     GET /chat/history returns ONLY the authenticated user's
 //                     own messages; POST /chat/ask stores messages owned by the
