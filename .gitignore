@@ -2,6 +2,11 @@
 /dist
 /node_modules
 /build
+# vitest cache accidentally created under src/
+src/node_modules
+
+# local-only docker compose override (may contain local dev credentials)
+docker-compose.override.yml
 
 # Logs
 logs
