@@ -2,6 +2,104 @@
 
 ---
 
+## Phase: Coaching Items System (Phase 2) – 2026-06-28 ✅
+
+### Goal
+Give coaches and users a structured, persistent way to capture goals, commitments,
+habits and behavioural intentions ("Coaching Items") so the coaching process has
+accountability and continuity across chat sessions. Four parts: a generic data model,
+full per-user CRUD, AI tool-calling that suggests items, and injecting the user's open
+items into the chat system prompt.
+
+### Built / Changed
+- **CoachingItem model** (`coaching_items` table): id, tenantId, userId, `type`
+  (OPEN string — no enum, so new types need no migration), title, description?,
+  status (open|in_progress|completed|paused, default open), dueDate?, completedAt?,
+  metadata (Json, default `{}`), createdBy (user|coach_ai|tenant_admin, default user),
+  createdAt, updatedAt. FKs to tenants + users (cascade). Indexes on tenantId, userId,
+  and composite (userId, tenantId, status). Back-relations added to Tenant + User.
+- **CoachingItemsModule** (new): controller + service + 4 DTOs + a constants file.
+  Exports `CoachingItemsService` so ChatModule can inject it.
+- **CRUD endpoints** under `/coaching-items` (JwtAuthGuard + RolesGuard, **no @Roles** —
+  any authenticated user manages ONLY their own items):
+  - `POST` create · `GET` list (`?status=&type=`, returns `{ items, total }`) ·
+    `GET :id` · `PATCH :id` · `DELETE :id` (`{ deletedId }`).
+  - **Strict isolation**: every query is scoped by `{ id?, userId, tenantId }` via
+    `findFirst`; another user's (or tenant's) id returns **404**, never a leak.
+  - `completedAt` is auto-stamped when status → completed and cleared when it leaves
+    completed.
+- **OpenAIChatService.generateReply** extended: new signature
+  `(systemPrompt, userMessage, { enableItemSuggestion? }) → { text, suggestedItem? }`.
+  Adds a `suggest_coaching_item` function tool (type/title required, description/dueDate
+  optional, `tool_choice: 'auto'`). On a tool call it parses the first suggestion, acks
+  ALL tool calls, then makes a second (tool-free) completion for the user-facing reply.
+  Retry/backoff refactored into a shared `createCompletion`.
+- **ChatService.ask**: loads the user's active items
+  (`findOpenItemsForPrompt`, open/in_progress, max 10, due-date asc nulls-last) and
+  injects a `### Your current coaching items` block BEFORE the knowledge-base excerpts
+  (omitted when none). Returns `suggestedItem` when present. **Suggestion is NOT
+  persisted** — only the two chat messages are written. Item loading degrades gracefully
+  (chat still works if it fails).
+
+### DB Schema Changes
+- `2026-06-28` migration `20260628120000_add_coaching_items`
+  - Create `coaching_items` (+ 3 indexes, 2 cascade FKs). Applied locally via
+    `prisma migrate deploy`; `migrate status` clean (no drift).
+
+### API Contract Changes (api.ts)
+- `2026-06-28 v1.12.0` – new CoachingItem, CreateCoachingItemRequest,
+  UpdateCoachingItemRequest, CoachingItemsListData, CoachingItemDeleteData,
+  SuggestedCoachingItem types + CoachingItemStatus / CoachingItemCreatedBy unions.
+  ChatAskData gained an OPTIONAL `suggestedItem` (additive — existing chat clients
+  unaffected). **Frontend notified: pending.**
+
+### Decisions & Findings
+- AI detection is **suggestion-only** (confirmed with user): the chat surfaces a
+  `suggestedItem`; the frontend confirms, then POSTs it with `createdBy: "coach_ai"`.
+  Nothing is auto-persisted.
+- **Any user manages their own items** (confirmed with user) — no admin role gate
+  (differs from knowledge-base writes). List is not paginated; filterable by status/type.
+- Two-call tool pattern: a tool call returns no assistant text, so a follow-up completion
+  produces the reply that accompanies the suggestion. All tool_call_ids are acked to
+  satisfy the OpenAI protocol.
+- OpenAI SDK v6 `tool_calls` is a union (function | custom) → narrowed with a
+  `c is ChatCompletionMessageFunctionToolCall` type guard.
+
+### Tests
+- New `coaching-items.service.spec.ts` (16): create defaults + completedAt stamping,
+  dueDate mapping, findAll scoping + filters, **cross-user/cross-tenant 404**, update
+  completedAt set/clear + no-op + dueDate clear + cross-user 404, remove 404 + delete,
+  findOpenItemsForPrompt scoping.
+- Updated `chat.service.spec.ts`: `generateReply` now returns `{ text }`; injected mock
+  `CoachingItemsService`; new cases for open-items load/inject, suggestedItem surfaced,
+  normal-path (no suggestion), suggestion-not-persisted, graceful item-load failure.
+- **Full suite green: 108/108. `nest build` clean.**
+
+### Bugs & Fixes
+- `2026-06-29` **Chat hung indefinitely when tool calling was enabled** — the
+  `[OpenAI call]` log appeared but no response ever returned. Root cause: the OpenAI
+  client was constructed with SDK defaults (`timeout` ~10 min, `maxRetries` 2), and
+  the service's retry loop never classified a stalled/timed-out request as such, so a
+  wedged socket could block for many minutes (worse on the two-call tool-calling path).
+  → Fix in `openai-chat.service.ts`: client now built with `maxRetries: 0` + `timeout`;
+  every completion (primary + follow-up) is capped at `OPENAI_TIMEOUT_MS` (default
+  30000) via an `AbortController` + backstop-timer race (`callWithTimeout`); timeouts
+  are classified (`isTimeout`) and **fail fast** as a 503 ("took too long to respond")
+  rather than being retried into a longer hang or swallowed as a generic 500; the
+  tool-calling follow-up has dedicated error handling/logging; rich `[OpenAI <label>]`
+  logs wrap every call, response and error. New env `OPENAI_TIMEOUT_MS`. Build + 108
+  tests green.
+
+### Open TODOs (deploy + next)
+- [ ] Notify frontend to sync api.ts v1.12.0 (consume `suggestedItem`; build the
+  coaching-items UI; POST accepted suggestions with `createdBy: "coach_ai"`).
+- [ ] Run `prisma migrate deploy` on the server.
+- [ ] Smoke test on prod: cross-user 404, suggestion appears on an intention message,
+  open items injected into the prompt.
+- [ ] Future: let the AI also reference/update existing items (currently suggest-only).
+
+---
+
 ## Phase: Multi-Tenant Foundation (Phase 1) – 2026-06-26 ✅
 
 ### Goal

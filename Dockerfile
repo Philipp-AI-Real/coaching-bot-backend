@@ -69,4 +69,8 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
-CMD ["node", "dist/main.js"]
+# Apply any pending Prisma migrations, then start. The prisma CLI ships in
+# node_modules (copied from the deps stage), so this runs offline — no npx
+# download. A failed migration exits the container instead of starting against a
+# stale schema. On an up-to-date DB it is a fast no-op.
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/main.js"]

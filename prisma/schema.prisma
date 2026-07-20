@@ -18,9 +18,10 @@ model Tenant {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  users     User[]
-  documents KnowledgeBaseDocument[]
-  messages  ChatMessage[]
+  users         User[]
+  documents     KnowledgeBaseDocument[]
+  messages      ChatMessage[]
+  coachingItems CoachingItem[]
 
   @@map("tenants")
 }
@@ -37,8 +38,9 @@ model User {
   soundEnabled    Boolean  @default(true)
   createdAt       DateTime @default(now())
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  chatMessages ChatMessage[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  chatMessages  ChatMessage[]
+  coachingItems CoachingItem[]
 
   // Username is unique per tenant, not globally.
   @@unique([tenantId, username])
@@ -77,4 +79,28 @@ model KnowledgeBaseDocument {
 
   @@index([tenantId])
   @@map("knowledge_base_documents")
+}
+
+model CoachingItem {
+  id          Int       @id @default(autoincrement())
+  tenantId    Int // owning tenant — coaching items are isolated per tenant
+  userId      Int // owner — a user only ever sees their own items
+  type        String // open string: milestone | homework | habit | ... (no enum, so new types need no migration)
+  title       String
+  description String?   @db.Text
+  status      String    @default("open") // open | in_progress | completed | paused
+  dueDate     DateTime?
+  completedAt DateTime?
+  metadata    Json      @default("{}") // flexible type-specific data
+  createdBy   String    @default("user") // user | coach_ai | tenant_admin
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([userId, tenantId, status])
+  @@map("coaching_items")
 }

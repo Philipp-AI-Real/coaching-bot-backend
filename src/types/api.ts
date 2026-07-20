@@ -8,7 +8,7 @@
 //   - After every change: update version + date below, notify frontend
 //   - Never break existing response shapes without coordinating with frontend
 //
-// Last updated: 2026-06-26 | Version: 1.11.0
+// Last updated: 2026-06-28 | Version: 1.12.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -123,6 +123,10 @@ export interface ChatAskRequest {
 
 export interface ChatAskData {
   reply: string
+  // Present only when the AI detects an actionable coaching intention in the
+  // message. It is NOT persisted — show it to the user and, on confirmation,
+  // create it via POST /coaching-items (createdBy: "coach_ai").
+  suggestedItem?: SuggestedCoachingItem
 }
 
 export interface ChatMessage {
@@ -193,6 +197,76 @@ export interface BatchUploadData {
 }
 
 
+// ─── Coaching Items ──────────────────────────────────────────────────────────
+// Generic, type-agnostic coaching items (goals, habits, commitments, ...).
+// Strictly scoped per user + tenant: a user only ever sees/edits their own.
+//
+// POST   /coaching-items        – create an item
+// GET    /coaching-items        – list current user's items (?status=&type=)
+// GET    /coaching-items/:id     – get one item
+// PATCH  /coaching-items/:id     – update (status/title/description/dueDate/metadata)
+// DELETE /coaching-items/:id     – delete
+
+export type CoachingItemStatus = 'open' | 'in_progress' | 'completed' | 'paused'
+export type CoachingItemCreatedBy = 'user' | 'coach_ai' | 'tenant_admin'
+
+export interface CoachingItem {
+  id: number
+  type: string                          // open string, e.g. "habit" (not an enum)
+  title: string
+  description: string | null
+  status: CoachingItemStatus
+  dueDate: string | null                // ISO 8601
+  completedAt: string | null            // ISO 8601 (auto-set when status → completed)
+  metadata: Record<string, unknown>     // flexible type-specific data
+  createdBy: CoachingItemCreatedBy
+  createdAt: string                     // ISO 8601
+  updatedAt: string                     // ISO 8601
+}
+
+export interface CreateCoachingItemRequest {
+  type: string
+  title: string
+  description?: string
+  status?: CoachingItemStatus           // default "open"
+  dueDate?: string                      // ISO 8601
+  metadata?: Record<string, unknown>
+  createdBy?: CoachingItemCreatedBy     // default "user"
+}
+
+export interface UpdateCoachingItemRequest {
+  title?: string
+  description?: string
+  status?: CoachingItemStatus
+  dueDate?: string | null               // null clears the due date
+  metadata?: Record<string, unknown>
+}
+
+export interface CoachingItemsListData {
+  items: CoachingItem[]
+  total: number
+}
+
+export interface CoachingItemDeleteData {
+  deletedId: number
+}
+
+// AI suggestion shape (not yet persisted — no id/timestamps). Returned in
+// ChatAskData.suggestedItem when the chat detects a coaching intention.
+export interface SuggestedCoachingItem {
+  type: string
+  title: string
+  description?: string
+  dueDate?: string                      // ISO 8601
+}
+
+// POST   /coaching-items       → ApiResponse<CoachingItem>
+// GET    /coaching-items       → ApiResponse<CoachingItemsListData>
+// GET    /coaching-items/:id   → ApiResponse<CoachingItem>
+// PATCH  /coaching-items/:id   → ApiResponse<CoachingItem>
+// DELETE /coaching-items/:id   → ApiResponse<CoachingItemDeleteData>
+
+
 // ─── Speech ──────────────────────────────────────────────────────────────────
 // POST /speech/transcribe  – multipart/form-data { audio: File, language?: 'en'|'de' }
 // POST /speech/synthesize  – JSON { text: string, language: 'en'|'de' }
@@ -223,6 +297,34 @@ export interface SynthesizeRequest {
 
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
+// 1.12.0 – 2026-06-28 Coaching Items (Phase 2). Structured, persistent goals,
+//                     habits, commitments and behavioural intentions.
+//                     - New CoachingItem type + CRUD endpoints under
+//                       /coaching-items. STRICT per-user + per-tenant scoping:
+//                       a user only ever sees/edits their OWN items; another
+//                       user's id returns 404. Any authenticated user (incl.
+//                       role "user") manages their own items — no admin gate.
+//                       GET supports ?status= and ?type= filters; list is not
+//                       paginated (CoachingItemsListData { items, total }).
+//                     - `type` is an OPEN string (e.g. milestone, homework,
+//                       habit, commitment, reflection), not an enum — new types
+//                       need no migration. `metadata` is a flexible JSON object.
+//                     - New types: CoachingItem, CreateCoachingItemRequest,
+//                       UpdateCoachingItemRequest, CoachingItemsListData,
+//                       CoachingItemDeleteData, SuggestedCoachingItem,
+//                       CoachingItemStatus, CoachingItemCreatedBy.
+//                     - ChatAskData: added OPTIONAL suggestedItem. When the AI
+//                       detects an actionable coaching intention in POST
+//                       /chat/ask, the reply now also carries a structured
+//                       suggestedItem (type/title/description?/dueDate?). It is
+//                       NOT persisted — the frontend confirms, then POSTs it
+//                       (createdBy "coach_ai"). Additive + optional → existing
+//                       chat clients are unaffected.
+//                     - The user's open/in_progress items are injected into the
+//                       chat system prompt for continuity (server-side only, no
+//                       contract impact).
+//                     DB migration add_coaching_items adds the coaching_items
+//                     table. No removals from existing response shapes.
 // 1.11.0 – 2026-06-26 Multi-tenant foundation (Phase 1). Full data isolation
 //                     between customer organisations (tenants).
 //                     - LoginRequest: added optional tenantSlug (defaults to

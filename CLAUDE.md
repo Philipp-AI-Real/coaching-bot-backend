@@ -254,6 +254,11 @@ Key decisions already made:
 2026-06-26  Every Qdrant vector carries a tenantId payload; searchKnowledge + deleteByKnowledgeBaseId require a tenantId filter. Existing vectors discarded (recreate collection on deploy)
 2026-06-26  CORS allow-list is driven by CORS_ALLOWED_ORIGINS (comma-separated env), unioned with FRONTEND_URL + localhost:3007. Per-tenant domain-based CORS is deferred to Phase 4
 2026-06-26  Tenant provisioning is seed-only in Phase 1; superadmin tenant-CRUD endpoints deferred to Phase 2
+2026-06-28  COACHING ITEMS (Phase 2, api.ts v1.12.0): new coaching_items table; generic CoachingItem with an OPEN-string type (no enum — new types need no migration), Json metadata, status open|in_progress|completed|paused, createdBy user|coach_ai|tenant_admin
+2026-06-28  Coaching items are STRICTLY per-user: every CRUD query is scoped by { id?, userId, tenantId } via findFirst; another user's id returns 404. Any authenticated user (incl. role "user") manages ONLY their own items — NO admin role gate (unlike knowledge-base writes). List is unpaginated, filterable by ?status= and ?type=
+2026-06-28  AI item detection is SUGGESTION-ONLY: OpenAIChatService.generateReply gained an enableItemSuggestion option + a suggest_coaching_item function tool; POST /chat/ask returns an optional suggestedItem (type/title/description?/dueDate?). It is NOT persisted — the frontend confirms then POSTs it with createdBy "coach_ai". Tool calls use a two-call pattern (call -> ack all tool_call_ids -> second call for the reply)
+2026-06-28  ChatService.ask injects the user's open/in_progress items (max 10, due-date asc) into the system prompt before the knowledge-base excerpts; omitted when none. completedAt is auto-stamped when status->completed and cleared when leaving completed
+2026-06-29  CHAT HANG FIX: OpenAI client now built with maxRetries:0 + timeout (so the SDK never adds its own retries on top of ours and never waits its 10-min default). Each chat completion (primary AND tool-calling follow-up) is capped at OPENAI_TIMEOUT_MS (default 30000) via an AbortController + a backstop timer race. Timeouts FAIL FAST as a 503 ("took too long to respond") — not retried (only 429/503/overload are retried). Detailed [OpenAI <label>] logs around every call/response/error
 Instructions for Claude Code
 ROLE:
   Senior Backend Engineer with expertise in NestJS, TypeScript,
@@ -364,6 +369,9 @@ OPENAI_CHAT_MODEL="gpt-4o-mini"
 OPENAI_CHAT_TEMPERATURE="0.7"
 OPENAI_CHAT_MAX_OUTPUT_TOKENS="2048"
 OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
+# Hard per-request timeout for OpenAI chat calls (ms). Each call is capped at
+# this; on timeout the chat fails fast with a 503 instead of hanging. Default 30000.
+OPENAI_TIMEOUT_MS="30000"
 
 # Gemini — no longer needed, can be removed
 GEMINI_API_KEY=""
@@ -521,6 +529,9 @@ Claude Code NEVER marks features ✅ without explicit user confirmation.
 ✅ DELETE /knowledge/:id
 ⏳ Search / filter on knowledge
 ⏳ CRUD /admin/users
+✅ CRUD /coaching-items (per-user goals/habits/commitments — Phase 2)
+✅ AI suggest_coaching_item tool in /chat/ask (suggestion-only)
+✅ Open items injected into chat system prompt
 3. Data & Storage
 ✅ PostgreSQL + Prisma schema
 ✅ DB migrations

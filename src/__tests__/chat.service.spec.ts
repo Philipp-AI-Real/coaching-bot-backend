@@ -9,6 +9,8 @@ import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QdrantService } from '../qdrant/qdrant.service';
 import { EmbeddingService } from '../embedding/embedding.service';
+import { CoachingItemsService } from '../coaching-items/coaching-items.service';
+import { CpmProcessService } from '../cpm-process/cpm-process.service';
 import { OpenAIChatService } from '../chat/openai-chat.service';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -41,6 +43,16 @@ const mockOpenAIChat = {
   generateReply: vi.fn(),
 };
 
+const mockCoachingItems = {
+  findOpenItemsForPrompt: vi.fn(),
+};
+
+const mockCpm = {
+  resolveSourceId: vi.fn(),
+  getPromptCatalogue: vi.fn(),
+  run: vi.fn(),
+};
+
 const mockConfig = {
   get: vi.fn().mockImplementation((key: string, defaultVal?: unknown) => {
     const values: Record<string, string> = { RAG_TOP_K: '8' };
@@ -60,7 +72,11 @@ describe('ChatService', () => {
     mockQdrant.searchKnowledge.mockResolvedValue([
       { score: 0.9, knowledgeBaseId: 1, chunkIndex: 0, text: 'Context about coaching.' },
     ]);
-    mockOpenAIChat.generateReply.mockResolvedValue('Great coaching advice!');
+    mockOpenAIChat.generateReply.mockResolvedValue({ text: 'Great coaching advice!' });
+    mockCoachingItems.findOpenItemsForPrompt.mockResolvedValue([]);
+    // CPM off by default — preserves the existing (non-CPM) assertions.
+    mockCpm.resolveSourceId.mockReturnValue(null);
+    mockCpm.getPromptCatalogue.mockResolvedValue(null);
     mockPrisma.chatMessage.create.mockResolvedValue(mockMsg('user', 'hello'));
     mockPrisma.$transaction.mockResolvedValue([]);
 
@@ -70,6 +86,8 @@ describe('ChatService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: QdrantService, useValue: mockQdrant },
         { provide: EmbeddingService, useValue: mockEmbedding },
+        { provide: CoachingItemsService, useValue: mockCoachingItems },
+        { provide: CpmProcessService, useValue: mockCpm },
         { provide: OpenAIChatService, useValue: mockOpenAIChat },
         { provide: ConfigService, useValue: mockConfig },
       ],
@@ -93,6 +111,48 @@ describe('ChatService', () => {
       expect(mockQdrant.searchKnowledge).toHaveBeenCalledTimes(1);
       expect(mockOpenAIChat.generateReply).toHaveBeenCalledTimes(1);
       expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves CPM tools disabled when the tenant maps to no source', async () => {
+      await service.ask(USER_ID, TENANT_ID, { message: 'hello' });
+      const opts = mockOpenAIChat.generateReply.mock.calls[0][2];
+      expect(opts.extraTools).toBeUndefined();
+      expect(opts.executeTool).toBeUndefined();
+    });
+
+    it('wires CPM tools + catalogue when the tenant has a mapped source', async () => {
+      mockCpm.resolveSourceId.mockReturnValue(5);
+      mockCpm.getPromptCatalogue.mockResolvedValue('EDGE-MAP-CATALOGUE');
+      mockCpm.run.mockResolvedValue({ rows: [{ id: 'p1' }] });
+
+      await service.ask(USER_ID, TENANT_ID, { message: 'subprocesses under Einkauf' });
+
+      expect(mockCpm.resolveSourceId).toHaveBeenCalledWith(TENANT_ID);
+      const [systemPrompt, , opts] = mockOpenAIChat.generateReply.mock.calls[0];
+      expect(systemPrompt).toContain('EDGE-MAP-CATALOGUE');
+      expect(systemPrompt).toContain('Process repository (CPM)');
+      expect(opts.extraTools).toBeDefined();
+      expect(opts.extraTools.length).toBeGreaterThan(0);
+
+      // The executor routes tool calls to the resolved source.
+      await opts.executeTool('traverse', { start: {} });
+      expect(mockCpm.run).toHaveBeenCalledWith('traverse', { start: {} }, 5);
+    });
+
+    it('keeps chat working when the CPM catalogue lookup fails', async () => {
+      mockCpm.resolveSourceId.mockReturnValue(5);
+      mockCpm.getPromptCatalogue.mockRejectedValue(new Error('cpm down'));
+
+      const res = await service.ask(USER_ID, TENANT_ID, { message: 'hello' });
+      expect(res).toEqual({ reply: 'Great coaching advice!' });
+      const opts = mockOpenAIChat.generateReply.mock.calls[0][2];
+      expect(opts.extraTools).toBeUndefined();
+    });
+
+    it('still returns the reply when persisting chat history fails', async () => {
+      mockPrisma.$transaction.mockRejectedValueOnce(new Error('column tenantId does not exist'));
+      const res = await service.ask(USER_ID, TENANT_ID, { message: 'hello' });
+      expect(res).toEqual({ reply: 'Great coaching advice!' });
     });
 
     it('should scope retrieval to the caller tenant', async () => {
@@ -123,14 +183,113 @@ describe('ChatService', () => {
       });
     });
 
+    it('should load the user\'s open items scoped by userId + tenantId', async () => {
+      await service.ask(USER_ID, TENANT_ID, { message: 'hello' });
+
+      expect(mockCoachingItems.findOpenItemsForPrompt).toHaveBeenCalledWith(
+        USER_ID,
+        TENANT_ID,
+      );
+    });
+
+    it('should inject open coaching items into the system prompt', async () => {
+      mockCoachingItems.findOpenItemsForPrompt.mockResolvedValue([
+        {
+          id: 1,
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          type: 'habit',
+          title: 'Meditate every morning',
+          description: null,
+          status: 'open',
+          dueDate: null,
+          completedAt: null,
+          metadata: {},
+          createdBy: 'user',
+          createdAt: new Date('2026-06-28T08:00:00.000Z'),
+          updatedAt: new Date('2026-06-28T08:00:00.000Z'),
+        },
+      ]);
+
+      await service.ask(USER_ID, TENANT_ID, { message: 'hello' });
+
+      const systemPrompt = mockOpenAIChat.generateReply.mock.calls[0][0] as string;
+      expect(systemPrompt).toContain('Your current coaching items');
+      expect(systemPrompt).toContain('Meditate every morning');
+      // Items block must come before the knowledge base excerpts.
+      expect(systemPrompt.indexOf('Your current coaching items')).toBeLessThan(
+        systemPrompt.indexOf('Knowledge base excerpts'),
+      );
+    });
+
+    it('should not add an items block when the user has no open items', async () => {
+      mockCoachingItems.findOpenItemsForPrompt.mockResolvedValue([]);
+
+      await service.ask(USER_ID, TENANT_ID, { message: 'hello' });
+
+      const systemPrompt = mockOpenAIChat.generateReply.mock.calls[0][0] as string;
+      expect(systemPrompt).not.toContain('Your current coaching items');
+    });
+
+    it('should still reply normally when the AI suggests no item', async () => {
+      mockOpenAIChat.generateReply.mockResolvedValue({ text: 'Just a reply.' });
+
+      const result = await service.ask(USER_ID, TENANT_ID, { message: 'hello' });
+
+      expect(result).toEqual({ reply: 'Just a reply.' });
+      expect(result).not.toHaveProperty('suggestedItem');
+    });
+
+    it('should surface suggestedItem when the AI detects an intention', async () => {
+      const suggestedItem = {
+        type: 'habit',
+        title: 'Meditate 10 minutes every morning',
+        dueDate: '2026-07-01',
+      };
+      mockOpenAIChat.generateReply.mockResolvedValue({
+        text: 'Great goal!',
+        suggestedItem,
+      });
+
+      const result = await service.ask(USER_ID, TENANT_ID, {
+        message: 'I want to meditate every morning',
+      });
+
+      expect(result).toEqual({ reply: 'Great goal!', suggestedItem });
+    });
+
+    it('should NOT persist the suggested item (suggestion only)', async () => {
+      mockOpenAIChat.generateReply.mockResolvedValue({
+        text: 'Great goal!',
+        suggestedItem: { type: 'habit', title: 'Meditate' },
+      });
+
+      await service.ask(USER_ID, TENANT_ID, { message: 'I want to meditate' });
+
+      // Only the two chat messages are written — no coaching item create.
+      expect(mockPrisma.chatMessage.create).toHaveBeenCalledTimes(2);
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still reply when loading open items fails (graceful degradation)', async () => {
+      mockCoachingItems.findOpenItemsForPrompt.mockRejectedValue(
+        new Error('db down'),
+      );
+
+      const result = await service.ask(USER_ID, TENANT_ID, { message: 'hello' });
+
+      expect(result).toEqual({ reply: 'Great coaching advice!' });
+    });
+
     it('should trim whitespace from the message before processing', async () => {
       await service.ask(USER_ID, TENANT_ID, { message: '  focus  ' });
 
       expect(mockEmbedding.embedQuery).toHaveBeenCalledWith('focus');
-      // ChatService now passes (systemPrompt, userMessage) to OpenAIChatService.
+      // ChatService passes (systemPrompt, userMessage, options) to OpenAIChatService.
       expect(mockOpenAIChat.generateReply).toHaveBeenCalledWith(
         expect.any(String),
         'focus',
+        expect.objectContaining({ enableItemSuggestion: true }),
       );
     });
 
