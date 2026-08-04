@@ -8,7 +8,7 @@
 //   - After every change: update version + date below, notify frontend
 //   - Never break existing response shapes without coordinating with frontend
 //
-// Last updated: 2026-06-28 | Version: 1.12.0
+// Last updated: 2026-07-31 | Version: 1.13.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -267,6 +267,76 @@ export interface SuggestedCoachingItem {
 // DELETE /coaching-items/:id   → ApiResponse<CoachingItemDeleteData>
 
 
+// ─── Admin: User Management ──────────────────────────────────────────────────
+// Tenant-scoped user administration. All routes require role tenant_admin or
+// superadmin and operate ONLY within the caller's own tenant (tenantId from the
+// JWT). A user id in another tenant returns 404 (no cross-tenant leak).
+// superadmin is also scoped to its own tenant here (MVP).
+//
+// GET    /admin/users            – list current tenant's users (search + paginate)
+// POST   /admin/users            – create a user in the current tenant
+// GET    /admin/users/:id        – get one user
+// PATCH  /admin/users/:id        – update role / defaultLanguage / soundEnabled
+// PATCH  /admin/users/:id/password – reset a user's password
+// DELETE /admin/users/:id        – delete a user (cascades chat + coaching items)
+
+// Roles an admin may ASSIGN. "superadmin" is intentionally NOT assignable via
+// this endpoint (superadmin provisioning stays seed-only).
+export type AssignableRole = 'user' | 'tenant_admin'
+
+// Safe user representation for admin views — never includes the password hash.
+export interface AdminUser {
+  id: number
+  tenantId: number
+  username: string
+  role: string                    // "superadmin" | "tenant_admin" | "user"
+  defaultLanguage: 'en' | 'de'
+  soundEnabled: boolean
+  avatarUrl: string | null
+  logoUrl: string | null
+  createdAt: string               // ISO 8601
+}
+
+export interface CreateUserRequest {
+  username: string                // 3–50 chars, unique within the tenant
+  password: string                // min 8 chars (plaintext; hashed server-side)
+  role?: AssignableRole           // default "user"
+  defaultLanguage?: 'en' | 'de'   // default "en"
+  soundEnabled?: boolean          // default true
+}
+
+export interface UpdateUserRequest {
+  role?: AssignableRole
+  defaultLanguage?: 'en' | 'de'
+  soundEnabled?: boolean
+  // At least one field is required (empty body → 400).
+}
+
+export interface ResetPasswordRequest {
+  password: string                // min 8 chars
+}
+
+export interface AdminUsersListData {
+  items: AdminUser[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
+export interface AdminUserDeleteData {
+  deletedId: number
+}
+
+// GET    /admin/users              → ApiResponse<AdminUsersListData>
+//   query: ?search=&page=1&limit=20&sortBy=username|role|createdAt&sortOrder=asc|desc
+// POST   /admin/users              → ApiResponse<AdminUser>          (201)
+// GET    /admin/users/:id          → ApiResponse<AdminUser>
+// PATCH  /admin/users/:id          → ApiResponse<AdminUser>
+// PATCH  /admin/users/:id/password → ApiResponse<AdminUser>
+// DELETE /admin/users/:id          → ApiResponse<AdminUserDeleteData>
+
+
 // ─── Speech ──────────────────────────────────────────────────────────────────
 // POST /speech/transcribe  – multipart/form-data { audio: File, language?: 'en'|'de' }
 // POST /speech/synthesize  – JSON { text: string, language: 'en'|'de' }
@@ -297,6 +367,25 @@ export interface SynthesizeRequest {
 
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
+// 1.13.0 – 2026-07-31 Admin User Management (Phase 2). Tenant-scoped user
+//                     administration for the "coach manages patients" model.
+//                     - New routes under /admin/users (GET list, POST create,
+//                       GET one, PATCH update, PATCH :id/password reset, DELETE).
+//                       All require role tenant_admin or superadmin and operate
+//                       ONLY within the caller's own tenant (tenantId from JWT);
+//                       another tenant's id returns 404. superadmin is also
+//                       tenant-scoped here (MVP).
+//                     - "superadmin" cannot be assigned via create/update (only
+//                       AssignableRole = "user" | "tenant_admin"); provisioning
+//                       superadmins stays seed-only.
+//                     - New types: AdminUser, CreateUserRequest,
+//                       UpdateUserRequest, ResetPasswordRequest,
+//                       AdminUsersListData, AdminUserDeleteData, AssignableRole.
+//                     - AdminUser NEVER includes passwordHash. DELETE cascades
+//                       the user's chat messages + coaching items (schema
+//                       onDelete: Cascade). No DB migration (User model already
+//                       has every field). Additive only — no existing shape
+//                       changes.
 // 1.12.0 – 2026-06-28 Coaching Items (Phase 2). Structured, persistent goals,
 //                     habits, commitments and behavioural intentions.
 //                     - New CoachingItem type + CRUD endpoints under

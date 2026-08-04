@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AdminUsersModule } from './admin-users/admin-users.module';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
@@ -20,6 +21,7 @@ import { SpeechModule } from './speech/speech.module';
     AuthModule,
     QdrantModule,
     KnowledgeBaseModule,
+    AdminUsersModule,
     CoachingItemsModule,
     CpmProcessModule,
     ChatModule,
