@@ -1,9 +1,9 @@
 services:
   app:
     container_name: coaching-bot-backend-app
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Built in GitHub Actions and pushed to GHCR; the server only pulls.
+    # ${IMAGE_TAG} lets you pin/rollback to a commit SHA; default: latest.
+    image: ghcr.io/philipp-ai-real/coaching-bot-backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
       - "3006:3000"
